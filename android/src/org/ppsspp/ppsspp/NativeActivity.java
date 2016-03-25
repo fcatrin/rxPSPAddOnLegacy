@@ -2,9 +2,34 @@ package org.ppsspp.ppsspp;
 
 import java.io.File;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import retrobox.utils.GamepadInfoDialog;
+import retrobox.utils.ImmersiveModeSetter;
+import retrobox.utils.ListOption;
+import retrobox.utils.RetroBoxDialog;
+import retrobox.utils.RetroBoxUtils;
+import retrobox.v2.ppsspp.R;
+import retrobox.vinput.AnalogGamepad;
+import retrobox.vinput.AnalogGamepadListener;
+import retrobox.vinput.GenericGamepad;
+import retrobox.vinput.Mapper;
+import retrobox.vinput.QuitHandler;
+import retrobox.vinput.Mapper.ShortCut;
+import retrobox.vinput.QuitHandler.QuitHandlerCallback;
+import retrobox.vinput.VirtualEvent.MouseButton;
+import retrobox.vinput.VirtualEventDispatcher;
+import retrobox.vinput.AnalogGamepad.Axis;
+import retrobox.vinput.GenericGamepad.Analog;
+import retrobox.vinput.overlay.GamepadController;
+import retrobox.vinput.overlay.GamepadView;
+import retrobox.vinput.overlay.Overlay;
+import xtvapps.core.AndroidFonts;
+import xtvapps.core.Callback;
+import xtvapps.core.SimpleCallback;
+import xtvapps.core.content.KeyValue;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
@@ -39,7 +64,10 @@ import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.View.OnSystemUiVisibilityChangeListener;
+import android.view.ViewTreeObserver.OnGlobalLayoutListener;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
@@ -86,6 +114,15 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
     InputDeviceState inputPlayerC;
     String inputPlayerADesc;
 
+    private GamepadInfoDialog gamepadInfoDialog;
+    AnalogGamepad analogGamepad;
+    public static final Overlay overlay = new Overlay();
+	public static Mapper mapper;
+	private VirtualInputDispatcher vinputDispatcher;
+    private GamepadView gamepadView;
+    private GamepadController gamepadController;
+    
+    
     // Functions for the app activity to override to change behaviour.
 
     public native void registerCallbacks();
@@ -94,6 +131,43 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
     public boolean useLowProfileButtons() {
     	return true;
     }
+    
+    private void openRetroBoxMenu() {
+    	onPause();
+    	
+    	List<ListOption> options = new ArrayList<ListOption>();
+    	options.add(new ListOption("", "Cancel"));
+    	options.add(new ListOption("load", "Load State"));
+    	options.add(new ListOption("save", "Save State"));
+    	options.add(new ListOption("help", "Help"));
+    	options.add(new ListOption("quit", "Quit"));
+    	
+    	
+    	RetroBoxDialog.showListDialog(this, "RetroBoxTV", options, new Callback<KeyValue>() {
+			@Override
+			public void onResult(KeyValue result) {
+				String key = result.getKey();
+				if (key.equals("load")) {
+					uiLoadState();
+				} else if (key.equals("save")) {
+					uiSaveState();
+				} else if (key.equals("quit")) {
+					uiQuit();
+				} else if (key.equals("help")) {
+					uiHelp();
+					return;
+				}
+				onResume();
+			}
+
+			@Override
+			public void onError() {
+				onResume();
+			}
+		});
+    	
+    }
+
 
 	@TargetApi(17)
 	private void detectOptimalAudioSettings() {
@@ -364,7 +438,7 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 			Initialize();
 			initialized = true;
 		}
-
+		
 		// OK, config should be initialized, we can query for screen rotation.
 		updateScreenRotation();
 
@@ -387,16 +461,70 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 		NativeApp.computeDesiredBackbufferDimensions();
 		int bbW = NativeApp.getDesiredBackbufferWidth();
 		int bbH = NativeApp.getDesiredBackbufferHeight();
-
+		
         mSurfaceView = new NativeSurfaceView(NativeActivity.this, bbW, bbH);
         mSurfaceView.getHolder().addCallback(NativeActivity.this);
         Log.i(TAG, "setcontentview before");
-		setContentView(mSurfaceView);
+		setContentView(R.layout.root);
+        ViewGroup root = (ViewGroup)findViewById(R.id.root);
+        root.addView(mSurfaceView, 0);
+
 		Log.i(TAG, "setcontentview after");
+
+        AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FONT_DEFAULT_M);
+        
+        AndroidFonts.setViewFont(findViewById(R.id.txtGamepadInfoTop), RetroBoxUtils.FONT_DEFAULT_M);
+        AndroidFonts.setViewFont(findViewById(R.id.txtGamepadInfoBottom), RetroBoxUtils.FONT_DEFAULT_M);
+
+        gamepadInfoDialog = new GamepadInfoDialog(this);
+        gamepadInfoDialog.loadFromIntent(getIntent());
+
+    	gamepadController = new GamepadController();
+    	vinputDispatcher = new VirtualInputDispatcher();
+
+        mapper = new Mapper(getIntent(), vinputDispatcher);
+        Mapper.initGestureDetector(this);
+        gamepadView = new GamepadView(this, overlay);
+        
+    	setupGamepadOverlay(root);
+    	analogGamepad = new AnalogGamepad(0, 0, new AnalogGamepadListener() {
+			
+			@Override
+			public void onMouseMoveRelative(float mousex, float mousey) {}
+			
+			@Override
+			public void onMouseMove(int mousex, int mousey) {}
+			
+			@Override
+			public void onAxisChange(GenericGamepad gamepad, float axisx, float axisy, float hatx, float haty) {
+				vinputDispatcher.sendAnalog(gamepad, Analog.LEFT, axisx, -axisy, hatx, haty);
+			}
+
+			@Override
+			public void onDigitalX(GenericGamepad gamepad, Axis axis, boolean on) {}
+
+			@Override
+			public void onDigitalY(GenericGamepad gamepad, Axis axis, boolean on) {}
+			
+			@Override
+			public void onTriggers(String deviceDescriptor, int deviceId, boolean left, boolean right) {
+				mapper.handleTriggerEvent(deviceDescriptor, deviceId, left, right); 
+			}
+
+		});
+
 
 		ensureRenderLoop();
     }
-
+	
+    private void setImmersiveMode() {
+    	ImmersiveModeSetter.get().setImmersiveMode(getWindow(), isStableLayout());
+	}
+    
+	private boolean isStableLayout() {
+		return Mapper.hasGamepads();
+	}
+    
 	@Override
 	public void surfaceCreated(SurfaceHolder holder)
 	{
@@ -602,6 +730,25 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
     public boolean IsXperiaPlay() {
         return android.os.Build.MODEL.equals("R800a") || android.os.Build.MODEL.equals("R800i") || android.os.Build.MODEL.equals("R800x") || android.os.Build.MODEL.equals("R800at") || android.os.Build.MODEL.equals("SO-01D") || android.os.Build.MODEL.equals("zeus");
     }
+    
+	@Override
+	public boolean dispatchTouchEvent(MotionEvent ev) {
+		if (RetroBoxDialog.isDialogVisible(this)) {
+			return super.dispatchTouchEvent(ev);
+		}
+		
+		if (gamepadView.isVisible() && gamepadController.onTouchEvent(ev)) {
+			if (Overlay.requiresRedraw) {
+				Overlay.requiresRedraw = false;
+				gamepadView.invalidate();
+			}
+			return true;
+		}
+		
+		mapper.onTouchEvent(ev);
+		
+		return super.dispatchTouchEvent(ev);
+	}
 
     // We grab the keys before onKeyDown/... even see them. This is also better because it lets us
     // distinguish devices.
@@ -1009,4 +1156,142 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
             finish();
         }
     }
+    
+	private int last_w = 0;
+	private int last_h = 0;
+
+	private void setupGamepadOverlay(final ViewGroup root) {
+		ViewTreeObserver observer = root.getViewTreeObserver();
+		observer.addOnGlobalLayoutListener(new OnGlobalLayoutListener() {
+			@Override
+			public void onGlobalLayout() {
+				int w = root.getWidth();
+				int h = root.getHeight();
+				if (w == last_w || h == last_h) return;
+				last_w = w;
+				last_h = h;
+				
+				Log.d("OVERLAY", "set dimensions " + w + "x" + h);
+				// mLifecycleHandler.updateScreenSize(w, h);
+				if (needsOverlay()) {
+					String overlayConfig = getIntent().getStringExtra("OVERLAY");
+					float alpha = getIntent().getFloatExtra("OVERLAY_ALPHA", 0.8f);
+					if (overlayConfig!=null) overlay.init(overlayConfig, w, h, alpha);
+				}
+				}
+			});
+		
+		Log.d("OVERLAY", "setupGamepadOverlay");
+		if (needsOverlay()) {
+			Log.d("OVERLAY", "has Overlay");
+			gamepadView.addToLayout(root);
+			gamepadView.showPanel();
+		}
+	}
+	
+	private boolean needsOverlay() {
+		return !Mapper.hasGamepads();
+	}
+
+    @Override
+	public void onBackPressed() {
+    	if (RetroBoxDialog.cancelDialog(this)) return;
+    	
+    	openRetroBoxMenu();
+	}
+
+    private void toastMessage(final String message) {
+    	Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+    
+    private String getSaveStateFileName() {
+    	return ""; // stateFile.getAbsolutePath() + "_" + stateSlot + ".state";
+    }
+    
+    private void uiLoadState() {
+    	//CoreInterfaceNative.emuLoadFile(getSaveStateFileName());
+
+    	toastMessage("State was restored");
+    }
+
+    private void uiSaveState() {
+    	// CoreInterfaceNative.emuSaveFile(getSaveStateFileName());
+    	toastMessage("State was saved");
+    }
+    
+    protected void uiHelp() {
+		RetroBoxDialog.showGamepadDialogIngame(this, gamepadInfoDialog, new SimpleCallback() {
+			@Override
+			public void onResult() {
+				onResume();
+			}
+		});
+    }
+
+	private void uiQuit() {
+		finish();
+	}
+	
+    protected void uiQuitConfirm() {
+    	QuitHandler.askForQuit(this, new QuitHandlerCallback() {
+			@Override
+			public void onQuit() {
+				uiQuit();
+			}
+		});
+    }
+    
+	class VirtualInputDispatcher implements VirtualEventDispatcher {
+
+		@TargetApi(Build.VERSION_CODES.HONEYCOMB_MR1)
+		@Override
+		public void sendKey(GenericGamepad gamepad, int keyCode, boolean down) {
+			Log.d("REMAP", "Send key event " + keyCode + " " + (down?"down":"up"));
+			
+			// emulate joystick events
+			
+			float axisX = 0;
+			float axisY = 0;
+			switch (keyCode) {
+			case KeyEvent.KEYCODE_DPAD_LEFT: axisX = down?-1:0; break;
+			case KeyEvent.KEYCODE_DPAD_RIGHT: axisX = down?1:0; break;
+			case KeyEvent.KEYCODE_DPAD_UP: axisY = down?-1:0; break;
+			case KeyEvent.KEYCODE_DPAD_DOWN: axisY = down?1:0; break;
+			}
+			
+			int deviceId = NativeApp.DEVICE_ID_PAD_0;
+			NativeApp.beginJoystickEvent();
+			NativeApp.joystickAxis(deviceId, MotionEvent.AXIS_HAT_X, axisX);
+			NativeApp.joystickAxis(deviceId, MotionEvent.AXIS_HAT_Y, axisY);
+			NativeApp.endJoystickEvent();
+			
+			if (down) NativeApp.keyDown(deviceId, keyCode, false);
+			else NativeApp.keyUp(deviceId, keyCode);
+		}
+
+		@Override
+		public void sendMouseButton(MouseButton button, boolean down) {
+			// TODO Auto-generated method stub
+			
+		}
+
+		@Override
+		public boolean handleShortcut(ShortCut shortcut, boolean down) {
+			switch(shortcut) {
+			case EXIT: if (!down) uiQuitConfirm(); return true;
+			case LOAD_STATE: if (!down) uiLoadState(); return true;
+			case SAVE_STATE: if (!down) uiSaveState(); return true;
+			case MENU : if (!down) openRetroBoxMenu(); return true;
+			default:
+				return false;
+			}
+		}
+
+		@Override
+		public void sendAnalog(GenericGamepad gamepad, Analog index, double x,
+				double y, double hatx, double haty) {
+			// TODO Auto-generated method stub
+			
+		}
+	}
 }
