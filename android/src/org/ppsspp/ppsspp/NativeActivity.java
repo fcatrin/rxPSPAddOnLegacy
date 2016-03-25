@@ -1,6 +1,7 @@
 package org.ppsspp.ppsspp;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,6 +30,7 @@ import retrobox.vinput.overlay.Overlay;
 import xtvapps.core.AndroidFonts;
 import xtvapps.core.Callback;
 import xtvapps.core.SimpleCallback;
+import xtvapps.core.Utils;
 import xtvapps.core.content.KeyValue;
 import android.Manifest;
 import android.annotation.SuppressLint;
@@ -305,6 +307,10 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 			break;
 		// All other device types are treated the same.
 		}
+		
+		// force TV mode to hide original gamepad overlay
+		//deviceType = NativeApp.DEVICE_TYPE_TV;
+		
 
 	    isXperiaPlay = IsXperiaPlay();
 
@@ -319,6 +325,14 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 		String model = Build.MANUFACTURER + ":" + Build.MODEL;
 		String languageRegion = Locale.getDefault().getLanguage() + "_" + Locale.getDefault().getCountry();
 
+		try {
+			File iniFile = new File(externalStorageDir + "/PSP/SYSTEM", "ppsspp.ini");
+			iniFile.getParentFile().mkdirs();
+			Utils.copyFile(new File(getIntent().getStringExtra("iniFile")), iniFile);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
 		NativeApp.audioConfig(optimalFramesPerBuffer, optimalSampleRate);
 		NativeApp.init(model, deviceType, languageRegion, apkFilePath, dataDir, externalStorageDir, libraryDir, cacheDir, shortcutParam, Build.VERSION.SDK_INT);
 
