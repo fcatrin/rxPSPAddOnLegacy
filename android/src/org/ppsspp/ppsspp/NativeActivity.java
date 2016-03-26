@@ -14,16 +14,16 @@ import retrobox.utils.RetroBoxDialog;
 import retrobox.utils.RetroBoxUtils;
 import retrobox.v2.ppsspp.R;
 import retrobox.vinput.AnalogGamepad;
+import retrobox.vinput.AnalogGamepad.Axis;
 import retrobox.vinput.AnalogGamepadListener;
 import retrobox.vinput.GenericGamepad;
+import retrobox.vinput.GenericGamepad.Analog;
 import retrobox.vinput.Mapper;
-import retrobox.vinput.QuitHandler;
 import retrobox.vinput.Mapper.ShortCut;
+import retrobox.vinput.QuitHandler;
 import retrobox.vinput.QuitHandler.QuitHandlerCallback;
 import retrobox.vinput.VirtualEvent.MouseButton;
 import retrobox.vinput.VirtualEventDispatcher;
-import retrobox.vinput.AnalogGamepad.Axis;
-import retrobox.vinput.GenericGamepad.Analog;
 import retrobox.vinput.overlay.GamepadController;
 import retrobox.vinput.overlay.GamepadView;
 import retrobox.vinput.overlay.Overlay;
@@ -52,23 +52,24 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
 import android.os.Vibrator;
 import android.text.InputType;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.KeyEvent;
-import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.View;
+import android.view.View.OnSystemUiVisibilityChangeListener;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
-import android.view.View.OnSystemUiVisibilityChangeListener;
 import android.view.ViewTreeObserver.OnGlobalLayoutListener;
 import android.view.Window;
 import android.view.WindowManager;
@@ -135,7 +136,7 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
     }
     
     private void openRetroBoxMenu() {
-    	onPause();
+    	onPauseFast();
     	
     	List<ListOption> options = new ArrayList<ListOption>();
     	options.add(new ListOption("", "Cancel"));
@@ -159,12 +160,12 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 					uiHelp();
 					return;
 				}
-				onResume();
+				onResumeFast();
 			}
 
 			@Override
 			public void onError() {
-				onResume();
+				onResumeFast();
 			}
 		});
     	
@@ -500,6 +501,12 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
         Mapper.initGestureDetector(this);
         gamepadView = new GamepadView(this, overlay);
         
+        for(int i=0; i<4; i++) {
+        	String prefix = "j" + (i+1);
+        	String deviceDescriptor = getIntent().getStringExtra(prefix + "DESCRIPTOR");
+    		Mapper.registerGamepad(i, deviceDescriptor);
+        }
+        
     	setupGamepadOverlay(root);
     	analogGamepad = new AnalogGamepad(0, 0, new AnalogGamepadListener() {
 			
@@ -639,6 +646,26 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 			NativeApp.shutdown();
 		}
 	}
+    
+    protected void onPauseFast() {
+    	sendKeyPress(KeyEvent.KEYCODE_BUTTON_THUMBR);
+    }
+    
+    protected void onResumeFast() {
+    	sendKeyPress(KeyEvent.KEYCODE_BACK);
+    }
+    
+    private void sendKeyPress(final int keyCode) {
+    	final int deviceId = NativeApp.DEVICE_ID_PAD_0;
+		NativeApp.keyDown(deviceId, keyCode, false);
+		new Handler().postDelayed(new Runnable() {
+
+			@Override
+			public void run() {
+				NativeApp.keyUp(deviceId, keyCode);
+			}
+		}, 100);
+    }
 
     @Override
     protected void onPause() {
@@ -768,6 +795,21 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
     // distinguish devices.
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+    	
+    	Log.d("NativeActivity", "try dispatchKeyEvent " + event);
+        boolean keyDown = event.getAction() == KeyEvent.ACTION_DOWN;
+        int keyCode = event.getKeyCode();
+    	if (RetroBoxDialog.isDialogVisible(this)) {
+    		if (keyDown) {
+    			if (RetroBoxDialog.onKeyDown(this, keyCode, event)) return true;
+    		} else {
+    			if (RetroBoxDialog.onKeyUp(this, keyCode, event)) return true;
+    		}
+    		return super.dispatchKeyEvent(event);
+    	}
+    	if (mapper.handleKeyEvent(event, keyCode, keyDown)) return true;
+    	Log.d("NativeActivity", "not handled dispatchKeyEvent " + event);
+    	
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR1 && !isXperiaPlay) {
 			InputDeviceState state = getInputDeviceState(event);
 			if (state == null) {
@@ -833,7 +875,14 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 	@Override
 	@TargetApi(12)
 	public boolean onGenericMotionEvent(MotionEvent event) {
-		// Log.d(TAG, "onGenericMotionEvent: " + event);
+    	if (RetroBoxDialog.isDialogVisible(this)) {
+    		return super.onGenericMotionEvent(event);
+    	}
+    	
+		if (analogGamepad != null && analogGamepad.onGenericMotionEvent(event)) return true;
+
+		Log.d(TAG, "onGenericMotionEvent: " + event);
+
 		if ((event.getSource() & InputDevice.SOURCE_JOYSTICK) != 0) {
 	        if (Build.VERSION.SDK_INT >= 12) {
 	        	InputDeviceState state = getInputDeviceState(event);
@@ -864,9 +913,11 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 	public boolean onKeyDown(int keyCode, KeyEvent event) {
 		// Eat these keys, to avoid accidental exits / other screwups.
 		// Maybe there's even more we need to eat on tablets?
+		Log.d("NativeActivity", "onKeyDown " + keyCode + " " + event);
 		boolean repeat = event.getRepeatCount() > 0;
 		switch (keyCode) {
 		case KeyEvent.KEYCODE_BACK:
+			/*
 			if (event.isAltPressed()) {
 				NativeApp.keyDown(0, 1004, repeat); // special custom keycode for the O button on Xperia Play
 			} else if (NativeApp.isAtTopLevel()) {
@@ -876,10 +927,13 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 			} else {
 				NativeApp.keyDown(0, keyCode, repeat);
 			}
+			*/
 			return true;
 		case KeyEvent.KEYCODE_MENU:
 		case KeyEvent.KEYCODE_SEARCH:
+			/*
 			NativeApp.keyDown(0, keyCode, repeat);
+			*/
 			return true;
 
 		case KeyEvent.KEYCODE_DPAD_UP:
@@ -902,8 +956,10 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 	@SuppressLint("NewApi")
 	@Override
 	public boolean onKeyUp(int keyCode, KeyEvent event) {
+		Log.d("NativeActivity", "onKeyUp " + keyCode + " " + event);
 		switch (keyCode) {
 		case KeyEvent.KEYCODE_BACK:
+			/*
 			if (event.isAltPressed()) {
 				NativeApp.keyUp(0, 1004); // special custom keycode
 			} else if (NativeApp.isAtTopLevel()) {
@@ -913,10 +969,12 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 				NativeApp.keyUp(0, keyCode);
 			}
 			return true;
+			*/
 		case KeyEvent.KEYCODE_MENU:
 		case KeyEvent.KEYCODE_SEARCH:
 			// Search probably should also be ignored. We send it to the app.
-			NativeApp.keyUp(0, keyCode);
+			//NativeApp.keyUp(0, keyCode);
+			openRetroBoxMenu();
 			return true;
 
 		case KeyEvent.KEYCODE_DPAD_UP:
@@ -1237,7 +1295,7 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 		RetroBoxDialog.showGamepadDialogIngame(this, gamepadInfoDialog, new SimpleCallback() {
 			@Override
 			public void onResult() {
-				onResume();
+				onResumeFast();
 			}
 		});
     }
@@ -1301,11 +1359,16 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 			}
 		}
 
+		@TargetApi(Build.VERSION_CODES.HONEYCOMB_MR1)
 		@Override
 		public void sendAnalog(GenericGamepad gamepad, Analog index, double x,
 				double y, double hatx, double haty) {
-			// TODO Auto-generated method stub
-			
+			Log.d("sendAnalog", "index " + index + " " + x + ", " + y + "   hatx:" + hatx + " haty:" + haty);
+			int deviceId = NativeApp.DEVICE_ID_PAD_0;
+			NativeApp.beginJoystickEvent();
+			NativeApp.joystickAxis(deviceId, MotionEvent.AXIS_HAT_X, (float)hatx);
+			NativeApp.joystickAxis(deviceId, MotionEvent.AXIS_HAT_Y, (float)haty);
+			NativeApp.endJoystickEvent();
 		}
 	}
 }
