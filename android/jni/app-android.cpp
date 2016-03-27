@@ -4,6 +4,9 @@
 // It calls a set of methods defined in NativeApp.h. These should be implemented
 // by your game or app.
 
+
+#include <assert.h>
+#include <sstream>
 #include <jni.h>
 #include <android/log.h>
 #include <android/native_window_jni.h>
@@ -30,14 +33,21 @@
 #include "gfx/gl_common.h"
 #include "gfx_es2/gpu_features.h"
 
+#include "thin3d/thin3d.h"
+#include "Core/Config.cpp"
+#include "Core/SaveState.h"
 #include "Common/GraphicsContext.h"
 #include "Common/GL/GLInterfaceBase.h"
-#include "Core/SaveState.h"
+#include "Common/Vulkan/VulkanLoader.h"
+#include "Common/Vulkan/VulkanContext.h"
 #include "UI/GameInfoCache.h"
 
 #include "app-android.h"
 
 static JNIEnv *jniEnvUI;
+
+static std::string game_name;
+static int save_slot = 0;
 
 enum {
 	ANDROID_VERSION_GINGERBREAD = 9,
@@ -57,15 +67,20 @@ struct FrameCommand {
 	std::string params;
 };
 
-class AndroidEGLGraphicsContext : public GraphicsContext {
+class AndroidGraphicsContext : public GraphicsContext {
+public:
+	virtual bool Init(ANativeWindow *wnd, int desiredBackbufferSizeX, int desiredBackbufferSizeY, int backbufferFormat, int androidVersion) = 0;
+};
+
+class AndroidEGLGraphicsContext : public AndroidGraphicsContext {
 public:
 	AndroidEGLGraphicsContext() : wnd_(nullptr), gl(nullptr) {}
-	bool Init(ANativeWindow *wnd, int desiredBackbufferSizeX, int desiredBackbufferSizeY, int backbufferFormat, int androidVersion);
+	bool Init(ANativeWindow *wnd, int desiredBackbufferSizeX, int desiredBackbufferSizeY, int backbufferFormat, int androidVersion) override;
 	void Shutdown() override;
 	void SwapBuffers() override;
 	void SwapInterval(int interval) override {}
-	void Resize() {}
-	Thin3DContext *CreateThin3DContext() {
+	void Resize() override {}
+	Thin3DContext *CreateThin3DContext() override {
 		CheckGLExtensions();
 		return T3DCreateGLContext();
 	}
@@ -122,6 +137,171 @@ void AndroidEGLGraphicsContext::SwapBuffers() {
 	gl->Swap();
 }
 
+// Doesn't do much. Just to fit in.
+class AndroidJavaEGLGraphicsContext : public GraphicsContext {
+public:
+	AndroidJavaEGLGraphicsContext() {}
+	bool Init(ANativeWindow *wnd, int desiredBackbufferSizeX, int desiredBackbufferSizeY, int backbufferFormat, int androidVersion) { return true; }
+	void Shutdown() override {}
+	void SwapBuffers() override {}
+	void SwapInterval(int interval) override {}
+	void Resize() override {}
+	Thin3DContext *CreateThin3DContext() override {
+		CheckGLExtensions();
+		return T3DCreateGLContext();
+	}
+};
+
+
+static const bool g_validate_ = true;
+static VulkanContext *g_Vulkan;
+
+class AndroidVulkanContext : public AndroidGraphicsContext {
+public:
+	AndroidVulkanContext() {}
+	bool Init(ANativeWindow *wnd, int desiredBackbufferSizeX, int desiredBackbufferSizeY, int backbufferFormat, int androidVersion) override;
+	void Shutdown() override;
+	void SwapInterval(int interval) override;
+	void SwapBuffers() override;
+	void Resize() override;
+
+	void *GetAPIContext() override { return g_Vulkan; }
+
+	Thin3DContext *CreateThin3DContext() override {
+		return T3DCreateVulkanContext(g_Vulkan);
+	}
+};
+
+struct VulkanLogOptions {
+	bool breakOnWarning;
+	bool breakOnError;
+	bool msgBoxOnError;
+};
+static VulkanLogOptions g_LogOptions;
+
+const char *ObjTypeToString(VkDebugReportObjectTypeEXT type) {
+	switch (type) {
+	case VK_DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT: return "Instance";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT: return "PhysicalDevice";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_EXT: return "Device";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_QUEUE_EXT: return "Queue";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT: return "CommandBuffer";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT: return "DeviceMemory";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT: return "Buffer";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_VIEW_EXT: return "BufferView";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT: return "Image";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT: return "ImageView";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT: return "ShaderModule";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT: return "Pipeline";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT: return "PipelineLayout";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_SAMPLER_EXT: return "Sampler";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_EXT: return "DescriptorSet";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT_EXT: return "DescriptorSetLayout";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_POOL_EXT: return "DescriptorPool";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT: return "Fence";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT: return "Semaphore";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_EVENT_EXT: return "Event";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_QUERY_POOL_EXT: return "QueryPool";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT: return "Framebuffer";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT: return "RenderPass";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_CACHE_EXT: return "PipelineCache";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT: return "SurfaceKHR";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT: return "SwapChainKHR";
+	case VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT: return "CommandPool";
+	default: return "Unknown";
+	}
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL Vulkan_Dbg(VkDebugReportFlagsEXT msgFlags, VkDebugReportObjectTypeEXT objType, uint64_t srcObject, size_t location, int32_t msgCode, const char* pLayerPrefix, const char* pMsg, void *pUserData) {
+	const VulkanLogOptions *options = (const VulkanLogOptions *)pUserData;
+	int loglevel = ANDROID_LOG_INFO;
+	if (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT) {
+		loglevel = ANDROID_LOG_ERROR;
+	} else if (msgFlags & VK_DEBUG_REPORT_WARNING_BIT_EXT) {
+		loglevel = ANDROID_LOG_WARN;
+	} else if (msgFlags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) {
+		loglevel = ANDROID_LOG_WARN;
+	} else if (msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT) {
+		loglevel = ANDROID_LOG_WARN;
+	} else if (msgFlags & VK_DEBUG_REPORT_DEBUG_BIT_EXT) {
+		loglevel = ANDROID_LOG_WARN;
+	}
+	
+	__android_log_print(loglevel, APP_NAME, "[%s] %s Code %d : %s", pLayerPrefix, ObjTypeToString(objType), msgCode, pMsg);
+
+	// false indicates that layer should not bail-out of an
+	// API call that had validation failures. This may mean that the
+	// app dies inside the driver due to invalid parameter(s).
+	// That's what would happen without validation layers, so we'll
+	// keep that behavior here.
+	return false;
+}
+
+bool AndroidVulkanContext::Init(ANativeWindow *wnd, int desiredBackbufferSizeX, int desiredBackbufferSizeY, int backbufferFormat, int androidVersion) {
+	if (g_Vulkan) {
+		return false;
+	}
+
+	init_glslang();
+
+	g_LogOptions.breakOnError = true;
+	g_LogOptions.breakOnWarning = true;
+	g_LogOptions.msgBoxOnError = false;
+
+	ILOG("Creating vulkan context");
+	Version gitVer(PPSSPP_GIT_VERSION);
+	g_Vulkan = new VulkanContext("PPSSPP", gitVer.ToInteger(), VULKAN_FLAG_PRESENT_MAILBOX | VULKAN_FLAG_PRESENT_FIFO_RELAXED);
+	if (!g_Vulkan->GetInstance()) {
+		ELOG("Failed to create vulkan context");
+		return false;
+	}
+
+	ILOG("Creating vulkan device");
+	if (g_Vulkan->CreateDevice(0) != VK_SUCCESS) {
+		return false;
+	}
+	int width = desiredBackbufferSizeX;
+	int height = desiredBackbufferSizeY;
+	if (!width || !height) {
+		width = pixel_xres;
+		height = pixel_yres;
+	}
+	ILOG("InitSurfaceAndroid: width=%d height=%d", width, height);
+	g_Vulkan->InitSurfaceAndroid(wnd, width, height);
+	if (g_validate_) {
+		int bits = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
+		g_Vulkan->InitDebugMsgCallback(&Vulkan_Dbg, bits, &g_LogOptions);
+	}
+	g_Vulkan->InitObjects(true);
+
+	return true;
+}
+
+void AndroidVulkanContext::Shutdown() {
+	g_Vulkan->WaitUntilQueueIdle();
+	g_Vulkan->DestroyObjects();
+	g_Vulkan->DestroyDebugMsgCallback();
+	g_Vulkan->DestroyDevice();
+	delete g_Vulkan;
+	g_Vulkan = nullptr;
+
+	finalize_glslang();
+}
+
+void AndroidVulkanContext::SwapBuffers() {
+}
+
+void AndroidVulkanContext::Resize() {
+	g_Vulkan->WaitUntilQueueIdle();
+	g_Vulkan->DestroyObjects();
+
+	// backbufferResize updated these values.  TODO: Notify another way?
+	g_Vulkan->ReinitSurfaceAndroid(pixel_xres, pixel_yres);
+	g_Vulkan->InitObjects(g_Vulkan);
+}
+
+void AndroidVulkanContext::SwapInterval(int interval) {
+}
 
 static recursive_mutex frameCommandLock;
 static std::queue<FrameCommand> frameCommands;
@@ -166,13 +346,14 @@ InputState input_state;
 
 static bool renderer_inited = false;
 static bool first_lost = true;
+static bool javaGL = true;
+
 static std::string library_path;
 static std::map<SystemPermission, PermissionStatus> permissions;
 
-static std::string game_name;
-static int save_slot = 0;
+GraphicsContext *graphicsContext;
 
-AndroidEGLGraphicsContext *graphicsContext;
+static void ProcessFrameCommands(JNIEnv *env);
 
 void PushCommand(std::string cmd, std::string param) {
 	lock_guard guard(frameCommandLock);
@@ -299,9 +480,9 @@ extern "C" jstring Java_org_ppsspp_ppsspp_NativeApp_queryConfig
 extern "C" void Java_org_ppsspp_ppsspp_NativeApp_init
   (JNIEnv *env, jclass, jstring jmodel, jint jdeviceType, jstring jlangRegion, jstring japkpath,
 		jstring jdataDir, jstring jexternalDir, jstring jlibraryDir, jstring jcacheDir, jstring jshortcutParam,
-		jint jAndroidVersion) {
+		jint jAndroidVersion, jboolean jjavaGL) {
 	jniEnvUI = env;
-
+	javaGL = jjavaGL;
 	setCurrentThreadName("androidInit");
 
 	ILOG("NativeApp.init() -- begin");
@@ -363,6 +544,21 @@ extern "C" void Java_org_ppsspp_ppsspp_NativeApp_init
 	ILOG("NativeApp.init() -- end");
 }
 
+extern "C" void Java_org_ppsspp_ppsspp_NativeApp_saveState(
+                JNIEnv *env, jclass) {
+        SaveState::SaveSlot(game_name, save_slot, SaveState::Callback());
+}
+
+extern "C" void Java_org_ppsspp_ppsspp_NativeApp_loadState(
+                JNIEnv *env, jclass) {
+        SaveState::LoadSlot(game_name, save_slot, SaveState::Callback());
+}
+
+extern "C" void Java_org_ppsspp_ppsspp_NativeApp_setStateSlot(
+                JNIEnv *env, jclass, jint slot) {
+        save_slot = slot;
+}
+
 extern "C" void Java_org_ppsspp_ppsspp_NativeApp_audioInit(JNIEnv *, jclass) {
 	sampleRate = optimalSampleRate;
 	if (NativeQueryConfig("force44khz") != "0" || optimalSampleRate == 0) {
@@ -407,8 +603,110 @@ extern "C" void Java_org_ppsspp_ppsspp_NativeApp_shutdown(JNIEnv *, jclass) {
 	ILOG("NativeApp.shutdown() -- end");
 }
 
-extern "C" void Java_org_ppsspp_ppsspp_NativeRenderer_displayShutdown(JNIEnv *env, jobject obj) {
+// JavaEGL
+extern "C" void Java_org_ppsspp_ppsspp_NativeRenderer_displayInit(JNIEnv * env, jobject obj) {
+	ILOG("NativeApp.displayInit()");
+	if (javaGL && !graphicsContext) {
+		graphicsContext = new AndroidJavaEGLGraphicsContext();
+	}
+
+	if (!renderer_inited) {
+		NativeInitGraphics(graphicsContext);
+		renderer_inited = true;
+	} else {
+		NativeDeviceRestore();  // ???
+		ILOG("displayInit: NativeDeviceRestore completed.");
+	}
+}
+
+// JavaEGL
+extern "C" void Java_org_ppsspp_ppsspp_NativeRenderer_displayResize(JNIEnv *, jobject clazz, jint w, jint h, jint dpi, jfloat refreshRate) {
+	ILOG("NativeApp.displayResize(%i x %i, dpi=%i, refresh=%0.2f)", w, h, dpi, refreshRate);
+
+	/*
+	g_dpi = dpi;
+	g_dpi_scale = 240.0f / (float)g_dpi;
+
+	pixel_xres = w;
+	pixel_yres = h;
+	dp_xres = pixel_xres * g_dpi_scale;
+	dp_yres = pixel_yres * g_dpi_scale;
+	dp_xscale = (float)dp_xres / pixel_xres;
+	dp_yscale = (float)dp_yres / pixel_yres;
+	*/
+	// display_hz = refreshRate;
+
+	pixel_xres = w;
+	pixel_yres = h;
+	// backbuffer_format = format;
+
+	g_dpi = (int)display_dpi;
+	g_dpi_scale = 240.0f / (float)g_dpi;
+
+	dp_xres = display_xres * g_dpi_scale;
+	dp_yres = display_yres * g_dpi_scale;
+
+	// Touch scaling is from display pixels to dp pixels.
+	dp_xscale = (float)dp_xres / (float)display_xres;
+	dp_yscale = (float)dp_yres / (float)display_yres;
+
+	pixel_in_dps = (float)pixel_xres / dp_xres;
+
+	NativeResized();
+}
+
+// JavaEGL
+extern "C" void Java_org_ppsspp_ppsspp_NativeRenderer_displayRender(JNIEnv *env, jobject obj) {
+	static bool hasSetThreadName = false;
+	if (!hasSetThreadName) {
+		hasSetThreadName = true;
+		setCurrentThreadName("AndroidRender");
+	}
+
 	if (renderer_inited) {
+		// TODO: Look into if these locks are a perf loss
+		{
+			lock_guard guard(input_state.lock);
+
+			input_state.pad_lstick_x = left_joystick_x_async;
+			input_state.pad_lstick_y = left_joystick_y_async;
+			input_state.pad_rstick_x = right_joystick_x_async;
+			input_state.pad_rstick_y = right_joystick_y_async;
+
+			UpdateInputState(&input_state);
+		}
+		NativeUpdate(input_state);
+
+		{
+			lock_guard guard(input_state.lock);
+			EndInputState(&input_state);
+		}
+
+		NativeRender(graphicsContext);
+		time_update();
+	} else {
+		ELOG("BAD: Ended up in nativeRender even though app has quit.%s", "");
+		// Shouldn't really get here. Let's draw magenta.
+		glDepthMask(GL_TRUE);
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+		glClearColor(1.0, 0.0, 1.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+	}
+
+	lock_guard guard(frameCommandLock);
+	if (!nativeActivity) {
+		while (!frameCommands.empty())
+			frameCommands.pop();
+		return;
+	}
+
+	ProcessFrameCommands(env);
+}
+
+extern "C" void Java_org_ppsspp_ppsspp_NativeRenderer_displayShutdown(JNIEnv *env, jobject obj) {
+	ILOG("NativeApp.displayShutdown()");
+	if (renderer_inited) {
+		NativeShutdownGraphics();
 		renderer_inited = false;
 		NativeMessageReceived("recreateviews", "");
 	}
@@ -432,6 +730,7 @@ PermissionStatus System_GetPermissionStatus(SystemPermission permission) {
 
 extern "C" jboolean JNICALL Java_org_ppsspp_ppsspp_NativeApp_touch
 	(JNIEnv *, jclass, float x, float y, int code, int pointerId) {
+
 	float scaledX = x * dp_xscale;
 	float scaledY = y * dp_yscale;
 
@@ -526,21 +825,6 @@ extern "C" jboolean Java_org_ppsspp_ppsspp_NativeApp_mouseWheelEvent(
 	JNIEnv *env, jclass, jint stick, jfloat x, jfloat y) {
 	// TODO: Support mousewheel for android
 	return true;
-}
-
-extern "C" void Java_org_ppsspp_ppsspp_NativeApp_saveState(
-		JNIEnv *env, jclass) {
-	SaveState::SaveSlot(game_name, save_slot, SaveState::Callback());
-}
-
-extern "C" void Java_org_ppsspp_ppsspp_NativeApp_loadState(
-		JNIEnv *env, jclass) {
-	SaveState::LoadSlot(game_name, save_slot, SaveState::Callback());
-}
-
-extern "C" void Java_org_ppsspp_ppsspp_NativeApp_setStateSlot(
-		JNIEnv *env, jclass, jint slot) {
-	save_slot = slot;
 }
 
 extern "C" jboolean JNICALL Java_org_ppsspp_ppsspp_NativeApp_accelerometer(JNIEnv *, jclass, float x, float y, float z) {
@@ -699,7 +983,7 @@ extern "C" jint JNICALL Java_org_ppsspp_ppsspp_NativeApp_getDesiredBackbufferHei
 	return desiredBackbufferSizeY;
 }
 
-void ProcessFrameCommands(JNIEnv *env) {
+static void ProcessFrameCommands(JNIEnv *env) {
 	lock_guard guard(frameCommandLock);
 	while (!frameCommands.empty()) {
 		FrameCommand frameCmd;
@@ -725,8 +1009,16 @@ extern "C" bool JNICALL Java_org_ppsspp_ppsspp_NativeActivity_runEGLRenderLoop(J
 		ELOG("Error: Surface is null.");
 		return false;
 	}
+	
+	bool vulkan = g_Config.iGPUBackend == GPU_BACKEND_VULKAN;
 
-	AndroidEGLGraphicsContext *graphicsContext = new AndroidEGLGraphicsContext();
+	AndroidGraphicsContext *graphicsContext;
+	if (vulkan) {
+		graphicsContext = new AndroidVulkanContext();
+	} else {
+		graphicsContext = new AndroidEGLGraphicsContext();
+	}
+
 	if (!graphicsContext->Init(wnd, desiredBackbufferSizeX, desiredBackbufferSizeY, backbuffer_format, androidVersion)) {
 		ELOG("Failed to initialize graphics context.");
 		delete graphicsContext;
@@ -777,14 +1069,11 @@ extern "C" bool JNICALL Java_org_ppsspp_ppsspp_NativeActivity_runEGLRenderLoop(J
 	ILOG("After render loop.");
 	g_gameInfoCache->WorkQueue()->Flush();
 
-	NativeDeviceLost();
-	ILOG("NativeDeviceLost completed.");
-
 	NativeShutdownGraphics();
 	renderer_inited = false;
 
 	graphicsContext->Shutdown();
-
+	delete graphicsContext;
 	renderLoopRunning = false;
 	WLOG("Render loop function exited.");
 	return true;
