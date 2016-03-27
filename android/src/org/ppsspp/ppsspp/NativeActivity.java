@@ -354,7 +354,9 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 		String libraryDir = getApplicationLibraryDir(appInfo);
 	    File sdcard = Environment.getExternalStorageDirectory();
 
-	    String externalStorageDir = sdcard.getAbsolutePath();
+	    File externalStorageDir = new File(sdcard + "/PSPRBX");
+	    externalStorageDir.mkdirs();
+	    
 	    String dataDir = this.getFilesDir().getAbsolutePath();
 		String apkFilePath = appInfo.sourceDir;
 		String cacheDir = getCacheDir().getAbsolutePath();
@@ -363,7 +365,7 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 		String languageRegion = Locale.getDefault().getLanguage() + "_" + Locale.getDefault().getCountry();
 
 		try {
-			File iniFile = new File(externalStorageDir + "/PSP/SYSTEM", "ppsspp.ini");
+			File iniFile = new File(externalStorageDir, "/PSP/SYSTEM/ppsspp.ini");
 			iniFile.getParentFile().mkdirs();
 			Utils.copyFile(new File(getIntent().getStringExtra("iniFile")), iniFile);
 		} catch (IOException e) {
@@ -371,7 +373,7 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 		}
 		
 		NativeApp.audioConfig(optimalFramesPerBuffer, optimalSampleRate);
-		NativeApp.init(model, deviceType, languageRegion, apkFilePath, dataDir, externalStorageDir, libraryDir, cacheDir, shortcutParam, Build.VERSION.SDK_INT);
+		NativeApp.init(model, deviceType, languageRegion, apkFilePath, dataDir, externalStorageDir.getAbsolutePath(), libraryDir, cacheDir, shortcutParam, Build.VERSION.SDK_INT);
 
 		sendInitialGrants();
 
