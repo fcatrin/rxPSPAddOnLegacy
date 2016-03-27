@@ -45,10 +45,12 @@ typedef struct {
 } FormatBuffer;
 
 class ShaderManager;
+class Thin3DContext;
+class Thin3DTexture;
 
 class SoftGPU : public GPUCommon {
 public:
-	SoftGPU();
+	SoftGPU(GraphicsContext *gfxCtx, Thin3DContext *_thin3D);
 	~SoftGPU();
 	void InitClear() override {}
 	void ExecuteOp(u32 op, u32 diff) override;
@@ -100,4 +102,9 @@ private:
 	u32 displayFramebuf_;
 	u32 displayStride_;
 	GEBufferFormat displayFormat_;
+
+	GraphicsContext *gfxCtx_;
+	Thin3DTexture *fbTex;
+	Thin3DContext *thin3d;
+	std::vector<u32> fbTexBuffer;
 };

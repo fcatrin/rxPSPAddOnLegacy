@@ -18,6 +18,7 @@
 #include <algorithm>
 #include "Common/MemoryUtil.h"
 #include "Core/Config.h"
+#include "Core/Host.h"
 #include "Core/Reporting.h"
 #include "Core/System.h"
 #include "GPU/Common/FramebufferCommon.h"
@@ -36,7 +37,7 @@
 extern int g_iNumVideos;
 
 TextureCacheCommon::TextureCacheCommon()
-	: nextTexture_(nullptr),
+	: cacheSizeEstimate_(0), nextTexture_(nullptr),
 	clutLastFormat_(0xFFFFFFFF), clutTotalBytes_(0), clutMaxBytes_(0), clutRenderAddress_(0xFFFFFFFF) {
 	// TODO: Clamp down to 256/1KB?  Need to check mipmapShareClut and clamp loadclut.
 	clutBufRaw_ = (u32 *)AllocateAlignedMemory(1024 * sizeof(u32), 16);  // 4KB
@@ -46,10 +47,10 @@ TextureCacheCommon::TextureCacheCommon()
 	memset(clutBufRaw_, 0, 1024 * sizeof(u32));
 	memset(clutBufConverted_, 0, 1024 * sizeof(u32));
 
-	// This is 5MB of temporary storage. Might be possible to shrink it.
-	tmpTexBuf32.resize(1024 * 512);  // 2MB
-	tmpTexBuf16.resize(1024 * 512);  // 1MB
-	tmpTexBufRearrange.resize(1024 * 512);   // 2MB
+	// These buffers will grow if necessary, but most won't need more than this.
+	tmpTexBuf32.resize(512 * 512);  // 1MB
+	tmpTexBuf16.resize(512 * 512);  // 0.5MB
+	tmpTexBufRearrange.resize(512 * 512);   // 1MB
 }
 
 TextureCacheCommon::~TextureCacheCommon() {
@@ -177,18 +178,74 @@ void TextureCacheCommon::NotifyFramebuffer(u32 address, VirtualFramebuffer *fram
 		break;
 
 	case NOTIFY_FB_DESTROYED:
-		fbCache_.erase(std::remove(fbCache_.begin(), fbCache_.end(),  framebuffer), fbCache_.end());
-		for (auto it = cache.lower_bound(cacheKey), end = cache.upper_bound(cacheKeyEnd); it != end; ++it) {
-			DetachFramebuffer(&it->second, addr, framebuffer);
-		}
-		for (auto it = cache.lower_bound(mirrorCacheKey), end = cache.upper_bound(mirrorCacheKeyEnd); it != end; ++it) {
-			const u64 mirrorlessKey = it->first & ~0x0060000000000000ULL;
-			// Let's still make sure it's in the cache range.
-			if (mirrorlessKey >= cacheKey && mirrorlessKey <= cacheKeyEnd) {
-				DetachFramebuffer(&it->second, addr, framebuffer);
-			}
+		fbCache_.erase(std::remove(fbCache_.begin(), fbCache_.end(), framebuffer), fbCache_.end());
+
+		// We may have an offset texture attached.  So we use fbTexInfo as a guide.
+		// We're not likely to have many attached framebuffers.
+		for (auto it = fbTexInfo_.begin(); it != fbTexInfo_.end(); ) {
+			u64 cachekey = it->first;
+			// We might erase, so move to the next one already (which won't become invalid.)
+			++it;
+
+			DetachFramebuffer(&cache[cachekey], addr, framebuffer);
 		}
 		break;
+	}
+}
+void TextureCacheCommon::AttachFramebufferValid(TexCacheEntry *entry, VirtualFramebuffer *framebuffer, const AttachedFramebufferInfo &fbInfo) {
+	const u64 cachekey = entry->CacheKey();
+	const bool hasInvalidFramebuffer = entry->framebuffer == nullptr || entry->invalidHint == -1;
+	const bool hasOlderFramebuffer = entry->framebuffer != nullptr && entry->framebuffer->last_frame_render < framebuffer->last_frame_render;
+	bool hasFartherFramebuffer = false;
+
+	if (!hasInvalidFramebuffer && !hasOlderFramebuffer) {
+		// If it's valid, but the offset is greater, then we still win.
+		if (fbTexInfo_[cachekey].yOffset == fbInfo.yOffset)
+			hasFartherFramebuffer = fbTexInfo_[cachekey].xOffset > fbInfo.xOffset;
+		else
+			hasFartherFramebuffer = fbTexInfo_[cachekey].yOffset > fbInfo.yOffset;
+	}
+
+	if (hasInvalidFramebuffer || hasOlderFramebuffer || hasFartherFramebuffer) {
+		if (entry->framebuffer == nullptr) {
+			cacheSizeEstimate_ -= EstimateTexMemoryUsage(entry);
+		}
+		entry->framebuffer = framebuffer;
+		entry->invalidHint = 0;
+		entry->status &= ~TextureCacheCommon::TexCacheEntry::STATUS_DEPALETTIZE;
+		entry->maxLevel = 0;
+		fbTexInfo_[cachekey] = fbInfo;
+		framebuffer->last_frame_attached = gpuStats.numFlips;
+		host->GPUNotifyTextureAttachment(entry->addr);
+	} else if (entry->framebuffer == framebuffer) {
+		framebuffer->last_frame_attached = gpuStats.numFlips;
+	}
+}
+
+void TextureCacheCommon::AttachFramebufferInvalid(TexCacheEntry *entry, VirtualFramebuffer *framebuffer, const AttachedFramebufferInfo &fbInfo) {
+	const u64 cachekey = entry->CacheKey();
+
+	if (entry->framebuffer == nullptr || entry->framebuffer == framebuffer) {
+		if (entry->framebuffer == nullptr) {
+			cacheSizeEstimate_ -= EstimateTexMemoryUsage(entry);
+		}
+		entry->framebuffer = framebuffer;
+		entry->invalidHint = -1;
+		entry->status &= ~TextureCacheCommon::TexCacheEntry::STATUS_DEPALETTIZE;
+		entry->maxLevel = 0;
+		fbTexInfo_[cachekey] = fbInfo;
+		host->GPUNotifyTextureAttachment(entry->addr);
+	}
+}
+
+void TextureCacheCommon::DetachFramebuffer(TexCacheEntry *entry, u32 address, VirtualFramebuffer *framebuffer) {
+	const u64 cachekey = entry->CacheKey();
+
+	if (entry->framebuffer == framebuffer) {
+		cacheSizeEstimate_ += EstimateTexMemoryUsage(entry);
+		entry->framebuffer = 0;
+		fbTexInfo_.erase(cachekey);
+		host->GPUNotifyTextureAttachment(entry->addr);
 	}
 }
 
@@ -307,60 +364,24 @@ void TextureCacheCommon::LoadClut(u32 clutAddr, u32 loadBytes) {
 	clutMaxBytes_ = std::max(clutMaxBytes_, loadBytes);
 }
 
-void *TextureCacheCommon::UnswizzleFromMem(const u8 *texptr, u32 bufw, u32 height, u32 bytesPerPixel) {
+void TextureCacheCommon::UnswizzleFromMem(u32 *dest, u32 destPitch, const u8 *texptr, u32 bufw, u32 height, u32 bytesPerPixel) {
+	// Note: bufw is always aligned to 16 bytes, so rowWidth is always >= 16.
 	const u32 rowWidth = (bytesPerPixel > 0) ? (bufw * bytesPerPixel) : (bufw / 2);
-	const u32 pitch = rowWidth / 4;
+	// A visual mapping of unswizzling, where each letter is 16-byte and 8 letters is a block:
+	//
+	// ABCDEFGH IJKLMNOP
+	//      ->
+	// AI
+	// BJ
+	// CK
+	// ...
+	//
+	// bxc is the number of blocks in the x direction, and byc the number in the y direction.
 	const int bxc = rowWidth / 16;
+	// The height is not always aligned to 8, but rounds up.
 	int byc = (height + 7) / 8;
-	if (byc == 0)
-		byc = 1;
 
-	u32 ydest = 0;
-	if (rowWidth >= 16) {
-		u32 *ydestp = tmpTexBuf32.data();
-		// The most common one, so it gets an optimized implementation.
-		DoUnswizzleTex16(texptr, ydestp, bxc, byc, pitch, rowWidth);
-	} else if (rowWidth == 8) {
-		const u32 *src = (const u32 *) texptr;
-		for (int by = 0; by < byc; by++) {
-			for (int n = 0; n < 8; n++, ydest += 2) {
-				tmpTexBuf32[ydest + 0] = *src++;
-				tmpTexBuf32[ydest + 1] = *src++;
-				src += 2; // skip two u32
-			}
-		}
-	} else if (rowWidth == 4) {
-		const u32 *src = (const u32 *) texptr;
-		for (int by = 0; by < byc; by++) {
-			for (int n = 0; n < 8; n++, ydest++) {
-				tmpTexBuf32[ydest] = *src++;
-				src += 3;
-			}
-		}
-	} else if (rowWidth == 2) {
-		const u16 *src = (const u16 *) texptr;
-		for (int by = 0; by < byc; by++) {
-			for (int n = 0; n < 4; n++, ydest++) {
-				u16 n1 = src[0];
-				u16 n2 = src[8];
-				tmpTexBuf32[ydest] = (u32)n1 | ((u32)n2 << 16);
-				src += 16;
-			}
-		}
-	} else if (rowWidth == 1) {
-		const u8 *src = (const u8 *) texptr;
-		for (int by = 0; by < byc; by++) {
-			for (int n = 0; n < 2; n++, ydest++) {
-				u8 n1 = src[ 0];
-				u8 n2 = src[16];
-				u8 n3 = src[32];
-				u8 n4 = src[48];
-				tmpTexBuf32[ydest] = (u32)n1 | ((u32)n2 << 8) | ((u32)n3 << 16) | ((u32)n4 << 24);
-				src += 64;
-			}
-		}
-	}
-	return tmpTexBuf32.data();
+	DoUnswizzleTex16(texptr, dest, bxc, byc, destPitch);
 }
 
 void *TextureCacheCommon::RearrangeBuf(void *inBuf, u32 inRowBytes, u32 outRowBytes, int h, bool allowInPlace) {
@@ -387,4 +408,36 @@ bool TextureCacheCommon::GetCurrentClutBuffer(GPUDebugBuffer &buffer) {
 	buffer.Allocate(pixels, 1, (GEBufferFormat)gstate.getClutPaletteFormat());
 	memcpy(buffer.GetData(), clutBufRaw_, 1024);
 	return true;
+}
+
+u32 TextureCacheCommon::EstimateTexMemoryUsage(const TexCacheEntry *entry) {
+	const u16 dim = entry->dim;
+	const u8 dimW = ((dim >> 0) & 0xf);
+	const u8 dimH = ((dim >> 8) & 0xf);
+
+	u32 pixelSize = 2;
+	switch (entry->format) {
+	case GE_TFMT_CLUT4:
+	case GE_TFMT_CLUT8:
+	case GE_TFMT_CLUT16:
+	case GE_TFMT_CLUT32:
+		// We assume cluts always point to 8888 for simplicity.
+		pixelSize = 4;
+		break;
+	case GE_TFMT_4444:
+	case GE_TFMT_5551:
+	case GE_TFMT_5650:
+		break;
+
+	case GE_TFMT_8888:
+	case GE_TFMT_DXT1:
+	case GE_TFMT_DXT3:
+	case GE_TFMT_DXT5:
+	default:
+		pixelSize = 4;
+		break;
+	}
+
+	// This in other words multiplies by w and h.
+	return pixelSize << (dimW + dimH);
 }

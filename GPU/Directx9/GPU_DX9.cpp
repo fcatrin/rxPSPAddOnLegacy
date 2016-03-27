@@ -18,6 +18,7 @@
 #include <set>
 
 #include "Common/ChunkFile.h"
+#include "Common/GraphicsContext.h"
 #include "base/NativeApp.h"
 #include "base/logging.h"
 #include "profiler/profiler.h"
@@ -391,8 +392,8 @@ static const CommandTableEntry commandTable[] = {
 
 DIRECTX9_GPU::CommandInfo DIRECTX9_GPU::cmdInfo_[256];
 
-DIRECTX9_GPU::DIRECTX9_GPU()
-: resized_(false) {
+DIRECTX9_GPU::DIRECTX9_GPU(GraphicsContext *gfxCtx)
+: resized_(false), gfxCtx_(gfxCtx) {
 	lastVsync_ = g_Config.bVSync ? 1 : 0;
 	dxstate.SetVSyncInterval(g_Config.bVSync);
 
@@ -480,6 +481,23 @@ void DIRECTX9_GPU::CheckGPUFeatures() {
 	features |= GPU_PREFER_CPU_DOWNLOAD;
 	features |= GPU_SUPPORTS_ACCURATE_DEPTH;
 
+	D3DCAPS9 caps;
+	ZeroMemory(&caps, sizeof(caps));
+	HRESULT result = 0;
+	if (pD3DdeviceEx) {
+		result = pD3DdeviceEx->GetDeviceCaps(&caps);
+	} else {
+		result = pD3Ddevice->GetDeviceCaps(&caps);
+	}
+	if (FAILED(result)) {
+		WARN_LOG_REPORT(G3D, "Direct3D9: Failed to get the device caps!");
+	} else {
+		if ((caps.RasterCaps & D3DPRASTERCAPS_ANISOTROPY) != 0 && caps.MaxAnisotropy > 1)
+			features |= GPU_SUPPORTS_ANISOTROPY;
+		if ((caps.TextureCaps & (D3DPTEXTURECAPS_NONPOW2CONDITIONAL | D3DPTEXTURECAPS_POW2)) == 0)
+			features |= GPU_SUPPORTS_OES_TEXTURE_NPOT;
+	}
+
 	if (!g_Config.bHighQualityDepth) {
 		features |= GPU_SCALE_DEPTH_FROM_24BIT_TO_16BIT;
 	} else if (PSP_CoreParameter().compat.flags().PixelDepthRounding) {
@@ -500,11 +518,12 @@ DIRECTX9_GPU::~DIRECTX9_GPU() {
 
 // Needs to be called on GPU thread, not reporting thread.
 void DIRECTX9_GPU::BuildReportingInfo() {
-	D3DADAPTER_IDENTIFIER9 identifier = {0};
-	pD3D->GetAdapterIdentifier(D3DADAPTER_DEFAULT, 0, &identifier);
+	Thin3DContext *thin3d = gfxCtx_->CreateThin3DContext();
 
-	reportingPrimaryInfo_ = identifier.Description;
-	reportingFullInfo_ = reportingPrimaryInfo_ + " - " + System_GetProperty(SYSPROP_GPUDRIVER_VERSION);
+	reportingPrimaryInfo_ = thin3d->GetInfoString(T3DInfo::VENDORSTRING);
+	reportingFullInfo_ = reportingPrimaryInfo_ + " - " + System_GetProperty(SYSPROP_GPUDRIVER_VERSION) + " - " + thin3d->GetInfoString(T3DInfo::SHADELANGVERSION);
+
+	thin3d->Release();
 }
 
 void DIRECTX9_GPU::DeviceLost() {
