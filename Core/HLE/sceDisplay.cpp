@@ -217,6 +217,12 @@ void __DisplayInit() {
 	__KernelRegisterWaitTypeFuncs(WAITTYPE_VBLANK, __DisplayVblankBeginCallback, __DisplayVblankEndCallback);
 }
 
+struct GPUStatistics_v0 {
+	int firstInts[11];
+	double msProcessingDisplayLists;
+	int moreInts[15];
+};
+
 void __DisplayDoState(PointerWrap &p) {
 	auto s = p.Section("sceDisplay", 1, 6);
 	if (!s)
@@ -283,12 +289,8 @@ void __DisplayDoState(PointerWrap &p) {
 	}
 #endif
 	if (s < 6) {
-		p.Do(gpuStats);
-
-		// Removed values from gpuStats.
-		int ignore = 42;
-		p.Do(ignore);
-		p.Do(ignore);
+		GPUStatistics_v0 oldStats;
+		p.Do(oldStats);
 	}
 	gpu->DoState(p);
 
@@ -439,7 +441,8 @@ void __DisplayGetDebugStats(char stats[], size_t bufsize) {
 		"Texture invalidations: %i\n"
 		"Vertex shaders loaded: %i\n"
 		"Fragment shaders loaded: %i\n"
-		"Combined shaders loaded: %i\n",
+		"Combined shaders loaded: %i\n"
+		"Pushbuffer space used: UBO %d, Vtx %d, Idx %d\n",
 		gpuStats.numVBlanks,
 		gpuStats.msProcessingDisplayLists * 1000.0f,
 		kernelStats.msInSyscalls * 1000.0f,
@@ -463,7 +466,10 @@ void __DisplayGetDebugStats(char stats[], size_t bufsize) {
 		gpuStats.numTextureInvalidations,
 		gpuStats.numVertexShaders,
 		gpuStats.numFragmentShaders,
-		gpuStats.numShaders
+		gpuStats.numShaders,
+		gpuStats.pushUBOSpaceUsed,
+		gpuStats.pushVertexSpaceUsed,
+		gpuStats.pushIndexSpaceUsed
 		);
 	stats[bufsize - 1] = '\0';
 	gpuStats.ResetFrame();
