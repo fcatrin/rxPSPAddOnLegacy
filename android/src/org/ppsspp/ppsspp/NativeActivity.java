@@ -832,7 +832,6 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
     	
-    	Log.d("NativeActivity", "try dispatchKeyEvent " + event);
         boolean keyDown = event.getAction() == KeyEvent.ACTION_DOWN;
         int keyCode = event.getKeyCode();
     	if (RetroBoxDialog.isDialogVisible(this)) {
@@ -844,7 +843,6 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
     		return super.dispatchKeyEvent(event);
     	}
     	if (mapper.handleKeyEvent(event, keyCode, keyDown)) return true;
-    	Log.d("NativeActivity", "not handled dispatchKeyEvent " + event);
     	
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR1 && !isXperiaPlay) {
 			InputDeviceState state = getInputDeviceState(event);
@@ -917,8 +915,6 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
     	
 		if (analogGamepad != null && analogGamepad.onGenericMotionEvent(event)) return true;
 
-		Log.d(TAG, "onGenericMotionEvent: " + event);
-
 		if ((event.getSource() & InputDevice.SOURCE_JOYSTICK) != 0) {
 	        if (Build.VERSION.SDK_INT >= 12) {
 	        	InputDeviceState state = getInputDeviceState(event);
@@ -949,7 +945,6 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 	public boolean onKeyDown(int keyCode, KeyEvent event) {
 		// Eat these keys, to avoid accidental exits / other screwups.
 		// Maybe there's even more we need to eat on tablets?
-		Log.d("NativeActivity", "onKeyDown " + keyCode + " " + event);
 		boolean repeat = event.getRepeatCount() > 0;
 		switch (keyCode) {
 		case KeyEvent.KEYCODE_BACK:
@@ -992,7 +987,6 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 	@SuppressLint("NewApi")
 	@Override
 	public boolean onKeyUp(int keyCode, KeyEvent event) {
-		Log.d("NativeActivity", "onKeyUp " + keyCode + " " + event);
 		switch (keyCode) {
 		case KeyEvent.KEYCODE_BACK:
 			/*
@@ -1349,8 +1343,6 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 		@TargetApi(Build.VERSION_CODES.HONEYCOMB_MR1)
 		@Override
 		public void sendKey(GenericGamepad gamepad, int keyCode, boolean down) {
-			Log.d("REMAP", "Send key event " + keyCode + " " + (down?"down":"up"));
-			
 			// emulate joystick events
 			
 			float axisX = 0;
