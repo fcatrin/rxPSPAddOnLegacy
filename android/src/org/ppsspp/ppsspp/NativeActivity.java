@@ -1332,7 +1332,7 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
     }
 
 	private void uiQuit() {
-		finish();
+		processCommand("finish", null);
 	}
 	
     protected void uiQuitConfirm() {
