@@ -13,6 +13,8 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Build;
 import android.os.Handler;
+// import android.os.Build;
+// import android.util.Log;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
@@ -68,6 +70,8 @@ public class NativeSurfaceView extends SurfaceView implements SensorEventListene
 		boolean canReadToolType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH;
 
 		int numTouchesHandled = 0;
+		//float scaleX = (float)mActivity.getRenderer().getDpiScaleX();
+		//float scaleY = (float)mActivity.getRenderer().getDpiScaleY();
 		for (int i = 0; i < ev.getPointerCount(); i++) {
 			int pid = ev.getPointerId(i);
 			int code = 0;
