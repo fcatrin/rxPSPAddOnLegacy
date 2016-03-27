@@ -54,6 +54,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Vibrator;
+import android.test.UiThreadTest;
 import android.text.InputType;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -124,7 +125,7 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 	private VirtualInputDispatcher vinputDispatcher;
     private GamepadView gamepadView;
     private GamepadController gamepadController;
-    
+    private int saveSlot = 1;
     
     // Functions for the app activity to override to change behaviour.
 
@@ -134,14 +135,46 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
     public boolean useLowProfileButtons() {
     	return true;
     }
+
+    private void uiChangeSlot() {
+   		List<ListOption> options = new ArrayList<ListOption>();
+    	options.add(new ListOption("", "Cancel"));
+    	for(int i=1; i<=5; i++) {
+    		options.add(new ListOption(i+"", "Use save slot " + i, (i==saveSlot)?"Active":""));
+    	}
+    	
+    	RetroBoxDialog.showListDialog(this, "RetroBoxTV", options, new Callback<KeyValue>() {
+			@Override
+			public void onResult(KeyValue result) {
+				int slot = Utils.str2i(result.getKey());
+				if (slot>0 && slot!=saveSlot) {
+					saveSlot = slot;
+					NativeApp.setStateSlot(saveSlot - 1);
+					toastMessage("Save State slot changed to " + slot);
+				}
+				openRetroBoxMenu(false);
+			}
+
+			@Override
+			public void onError() {
+				openRetroBoxMenu(false);
+			}
+			
+    	});
+    }
     
     private void openRetroBoxMenu() {
-    	onPauseFast();
+    	openRetroBoxMenu(true);
+    }
+    
+    private void openRetroBoxMenu(boolean pause) {
+    	if (pause) onPauseFast();
     	
     	List<ListOption> options = new ArrayList<ListOption>();
     	options.add(new ListOption("", "Cancel"));
     	options.add(new ListOption("load", "Load State"));
     	options.add(new ListOption("save", "Save State"));
+    	options.add(new ListOption("slot", "Change Save State slot", "Slot " + saveSlot));
     	options.add(new ListOption("help", "Help"));
     	options.add(new ListOption("quit", "Quit"));
     	
@@ -156,6 +189,9 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 					uiSaveState();
 				} else if (key.equals("quit")) {
 					uiQuit();
+				} else if (key.equals("slot")) {
+					uiChangeSlot();
+					return;
 				} else if (key.equals("help")) {
 					uiHelp();
 					return;
