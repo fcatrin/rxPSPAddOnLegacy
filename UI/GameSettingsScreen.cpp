@@ -135,10 +135,18 @@ void GameSettingsScreen::CreateViews() {
 	tabHolder->AddTab(ms->T("Graphics"), graphicsSettingsScroll);
 
 	graphicsSettings->Add(new ItemHeader(gr->T("Rendering Mode")));
-#if defined(_WIN32)
-	static const char *renderingBackend[] = { "OpenGL", "Direct3D9" };
+	static const char *renderingBackend[] = { "OpenGL", "Direct3D 9", "Direct3D 11", "Vulkan (experimental)" };
 	PopupMultiChoice *renderingBackendChoice = graphicsSettings->Add(new PopupMultiChoice(&g_Config.iGPUBackend, gr->T("Backend"), renderingBackend, GPU_BACKEND_OPENGL, ARRAY_SIZE(renderingBackend), gr->GetName(), screenManager()));
 	renderingBackendChoice->OnChoice.Handle(this, &GameSettingsScreen::OnRenderingBackend);
+#if !defined(_WIN32)
+	renderingBackendChoice->HideChoice(1);  // D3D9
+	renderingBackendChoice->HideChoice(2);  // D3D11
+#else
+	renderingBackendChoice->HideChoice(2);  // D3D11
+#endif
+#if !defined(ANDROID) && !defined(_WIN32)
+	// TODO: Add dynamic runtime check for Vulkan support on Android
+	renderingBackendChoice->HideChoice(3);
 #endif
 	static const char *renderingMode[] = { "Non-Buffered Rendering", "Buffered Rendering", "Read Framebuffers To Memory (CPU)", "Read Framebuffers To Memory (GPU)"};
 	PopupMultiChoice *renderingModeChoice = graphicsSettings->Add(new PopupMultiChoice(&g_Config.iRenderingMode, gr->T("Mode"), renderingMode, 0, ARRAY_SIZE(renderingMode), gr->GetName(), screenManager()));
@@ -193,6 +201,8 @@ void GameSettingsScreen::CreateViews() {
 #ifdef ANDROID
 	static const char *deviceResolutions[] = { "Native device resolution", "Auto (same as Rendering)", "1x PSP", "2x PSP", "3x PSP", "4x PSP", "5x PSP" };
 	int max_res_temp = std::max(System_GetPropertyInt(SYSPROP_DISPLAY_XRES), System_GetPropertyInt(SYSPROP_DISPLAY_YRES)) / 480 + 2;
+	if (max_res_temp == 3)
+		max_res_temp = 4;  // At least allow 2x
 	int max_res = std::min(max_res_temp, (int)ARRAY_SIZE(deviceResolutions));
 	UI::PopupMultiChoice *hwscale = graphicsSettings->Add(new PopupMultiChoice(&g_Config.iAndroidHwScale, gr->T("Display Resolution (HW scaler)"), deviceResolutions, 0, max_res, gr->GetName(), screenManager()));
 	hwscale->OnChoice.Handle(this, &GameSettingsScreen::OnHwScaleChange);  // To refresh the display mode
@@ -240,22 +250,18 @@ void GameSettingsScreen::CreateViews() {
 	graphicsSettings->Add(new ItemHeader(gr->T("Texture Scaling")));
 #ifndef MOBILE_DEVICE
 	static const char *texScaleLevelsNPOT[] = {"Auto", "Off", "2x", "3x", "4x", "5x"};
-	static const char *texScaleLevelsPOT[] = {"Auto", "Off", "2x", "4x"};
 #else
 	static const char *texScaleLevelsNPOT[] = {"Auto", "Off", "2x", "3x"};
-	static const char *texScaleLevelsPOT[] = {"Auto", "Off", "2x"};
 #endif
 
-	static const char **texScaleLevels;
-	static int numTexScaleLevels;
-	if (gl_extensions.OES_texture_npot) {
-		texScaleLevels = texScaleLevelsNPOT;
-		numTexScaleLevels = ARRAY_SIZE(texScaleLevelsNPOT);
-	} else {
-		texScaleLevels = texScaleLevelsPOT;
-		numTexScaleLevels = ARRAY_SIZE(texScaleLevelsPOT);
-	}
+	static const char **texScaleLevels = texScaleLevelsNPOT;
+	static int numTexScaleLevels = ARRAY_SIZE(texScaleLevelsNPOT);
 	PopupMultiChoice *texScalingChoice = graphicsSettings->Add(new PopupMultiChoice(&g_Config.iTexScalingLevel, gr->T("Upscale Level"), texScaleLevels, 0, numTexScaleLevels, gr->GetName(), screenManager()));
+	// TODO: Better check?  When it won't work, it scales down anyway.
+	if (!gl_extensions.OES_texture_npot && GetGPUBackend() == GPUBackend::OPENGL) {
+		texScalingChoice->HideChoice(3); // 3x
+		texScalingChoice->HideChoice(5); // 5x
+	}
 	texScalingChoice->SetDisabledPtr(&g_Config.bSoftwareRendering);
 
 	static const char *texScaleAlgos[] = { "xBRZ", "Hybrid", "Bicubic", "Hybrid + Bicubic", };
@@ -302,6 +308,7 @@ void GameSettingsScreen::CreateViews() {
 	depthWrite->SetDisabledPtr(&g_Config.bSoftwareRendering);
 
 	graphicsSettings->Add(new CheckBox(&g_Config.bPrescaleUV, gr->T("Texture Coord Speedhack")));
+	depthWrite->SetDisabledPtr(&g_Config.bSoftwareRendering);
 
 	static const char *bloomHackOptions[] = { "Off", "Safe", "Balanced", "Aggressive" };
 	PopupMultiChoice *bloomHack = graphicsSettings->Add(new PopupMultiChoice(&g_Config.iBloomHack, gr->T("Lower resolution for effects (reduces artifacts)"), bloomHackOptions, 0, ARRAY_SIZE(bloomHackOptions), gr->GetName(), screenManager()));
@@ -329,7 +336,7 @@ void GameSettingsScreen::CreateViews() {
 	CheckBox *softwareGPU = graphicsSettings->Add(new CheckBox(&g_Config.bSoftwareRendering, gr->T("Software Rendering", "Software Rendering (experimental)")));
 	softwareGPU->OnClick.Handle(this, &GameSettingsScreen::OnSoftwareRendering);
 
-	if (PSP_IsInited() || g_Config.iGPUBackend != GPU_BACKEND_OPENGL)
+	if (PSP_IsInited())
 		softwareGPU->SetEnabled(false);
 
 	// Audio
@@ -647,14 +654,18 @@ UI::EventReturn GameSettingsScreen::OnHardwareTransform(UI::EventParams &e) {
 
 UI::EventReturn GameSettingsScreen::OnScreenRotation(UI::EventParams &e) {
 	ILOG("New display rotation: %d", g_Config.iScreenRotation);
+	ILOG("Sending rotate");
 	System_SendMessage("rotate", "");
+	ILOG("Got back from rotate");
 	return UI::EVENT_DONE;
 }
 
 static void RecreateActivity() {
 	const int SYSTEM_JELLYBEAN = 16;
 	if (System_GetPropertyInt(SYSPROP_SYSTEMVERSION) >= SYSTEM_JELLYBEAN) {
+		ILOG("Sending recreate");
 		System_SendMessage("recreate", "");
+		ILOG("Got back from recreate");
 	} else {
 		I18NCategory *gr = GetI18NCategory("Graphics");
 		System_SendMessage("toast", gr->T("Must Restart", "You must restart PPSSPP for this change to take effect"));
@@ -880,11 +891,6 @@ void GameSettingsScreen::CallbackRenderingBackend(bool yes) {
 	// If the user ends up deciding not to restart, set the config back to the current backend
 	// so it doesn't get switched by accident.
 	if (yes) {
-		if (g_Config.iGPUBackend == (int)GPUBackend::DIRECT3D9) {
-			// TODO: Remove once software renderer supports D3D9.
-			g_Config.bSoftwareRendering = false;
-		}
-
 		g_Config.bRestartRequired = true;
 		PostMessage(MainWindow::GetHWND(), WM_CLOSE, 0, 0);
 	} else {

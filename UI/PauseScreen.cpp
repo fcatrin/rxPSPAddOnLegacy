@@ -273,7 +273,6 @@ void GamePauseScreen::CreateViews() {
 	I18NCategory *pa = GetI18NCategory("Pause");
 
 	root_ = new LinearLayout(ORIENT_HORIZONTAL);
-
 	/*
 	ViewGroup *leftColumn = new ScrollView(ORIENT_VERTICAL, new LinearLayoutParams(1.0, scrollMargins));
 	root_->Add(leftColumn);
