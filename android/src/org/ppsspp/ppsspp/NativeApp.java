@@ -56,4 +56,8 @@ public class NativeApp {
 	public static native void sendMessage(String msg, String arg);
 
 	public static native String queryConfig(String queryName);
+	
+	public static native void loadState();
+	public static native void saveState();
+	public static native void setStateSlot(int slot);
 }

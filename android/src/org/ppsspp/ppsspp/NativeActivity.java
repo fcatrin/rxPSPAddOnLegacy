@@ -1276,18 +1276,13 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
     	Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
     
-    private String getSaveStateFileName() {
-    	return ""; // stateFile.getAbsolutePath() + "_" + stateSlot + ".state";
-    }
-    
     private void uiLoadState() {
-    	//CoreInterfaceNative.emuLoadFile(getSaveStateFileName());
-
+    	NativeApp.loadState();
     	toastMessage("State was restored");
     }
 
     private void uiSaveState() {
-    	// CoreInterfaceNative.emuSaveFile(getSaveStateFileName());
+    	NativeApp.saveState();
     	toastMessage("State was saved");
     }
     
