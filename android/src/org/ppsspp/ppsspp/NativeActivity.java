@@ -361,7 +361,8 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 		String apkFilePath = appInfo.sourceDir;
 		String cacheDir = getCacheDir().getAbsolutePath();
 
-		String model = Build.MANUFACTURER + ":" + Build.MODEL;
+		// don't use built in specific controller handling
+		String model = "RETRO BOX"; // Build.MANUFACTURER + ":" + Build.MODEL;
 		String languageRegion = Locale.getDefault().getLanguage() + "_" + Locale.getDefault().getCountry();
 
 		try {
@@ -686,7 +687,7 @@ public class NativeActivity extends Activity implements SurfaceHolder.Callback {
 	}
     
     protected void onPauseFast() {
-    	sendKeyPress(KeyEvent.KEYCODE_BUTTON_THUMBR);
+    	NativeApp.sendMessage("pause", "");
     }
     
     protected void onResumeFast() {
