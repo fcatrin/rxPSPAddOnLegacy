@@ -1,5 +1,5 @@
 // This is generic code that is included in all Android apps that use the
-// Native framework by Henrik Rydgård (https://github.com/hrydgard/native).
+// Native framework by Henrik Rydgï¿½rd (https://github.com/hrydgard/native).
 
 // It calls a set of methods defined in NativeApp.h. These should be implemented
 // by your game or app.
@@ -26,6 +26,7 @@
 #include "net/resolve.h"
 #include "android/jni/native_audio.h"
 #include "gfx/gl_common.h"
+#include "Core/SaveState.h"
 
 #include "app-android.h"
 
@@ -59,6 +60,9 @@ static int sampleRate = 0;
 static int framesPerBuffer = 0;
 static int androidVersion;
 static int deviceType;
+
+static std::string game_name;
+static int save_slot = 0;
 
 // Should only be used for display detection during startup (for config defaults etc)
 static int display_xres;
@@ -250,9 +254,25 @@ extern "C" void Java_org_ppsspp_ppsspp_NativeApp_init
 	else {
 		const char *argv[3] = {app_name.c_str(), shortcut_param.c_str(), 0};
 		NativeInit(2, argv, user_data_path.c_str(), externalDir.c_str(), installID.c_str());
+		game_name = std::string(shortcut_param.c_str());
 	}
 
 	ILOG("NativeApp.init() -- end");
+}
+
+extern "C" void Java_org_ppsspp_ppsspp_NativeApp_saveState(
+		JNIEnv *env, jclass) {
+	SaveState::SaveSlot(game_name, save_slot, SaveState::Callback());
+}
+
+extern "C" void Java_org_ppsspp_ppsspp_NativeApp_loadState(
+		JNIEnv *env, jclass) {
+	SaveState::LoadSlot(game_name, save_slot, SaveState::Callback());
+}
+
+extern "C" void Java_org_ppsspp_ppsspp_NativeApp_setStateSlot(
+		JNIEnv *env, jclass, jint slot) {
+	save_slot = slot;
 }
 
 extern "C" void Java_org_ppsspp_ppsspp_NativeApp_audioInit(JNIEnv *, jclass) {
