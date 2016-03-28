@@ -6,9 +6,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/CMakeTests)
 
 add_definitions(-DPPSSPP)
 
-# None of these platforms support Vulkan yet.
-add_definitions(-DNO_VULKAN)
-
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 	set(_ARCH_64 1)
 	add_definitions(-D_ARCH_64=1)
@@ -43,8 +40,6 @@ endif()
 if(EXISTS "/opt/vc/include/bcm_host.h")
 	message(STATUS "RaspberryPI VC Found")
 	set(RPI ON)
-	set(USING_GLES2 ON)
-	set(USING_FBDEV ON)
 endif()
 
 if(BB)
@@ -95,7 +90,6 @@ option(BB "Set to ON if targeting a Beaglebone/Beaglebone Black device" ${BB})
 option(USING_EGL "Set to ON if target environment uses EGL" ${USING_EGL})
 option(USING_FBDEV "Set to ON if target environment uses fbdev (eg. Pandora)" ${USING_FBDEV})
 option(USING_GLES2 "Set to ON if target device uses OpenGL ES 2.0" ${USING_GLES2})
-option(RASPBIAN "Set to ON to workaround threading issues when building for ARMV7 on Raspbian" ${RASPBIAN})
 # :: Frontends
 option(USING_QT_UI "Set to ON if you wish to use the Qt frontend wrapper" ${USING_QT_UI})
 option(MOBILE_DEVICE "Set to ON when targetting a mobile device" ${MOBILE_DEVICE})
@@ -135,7 +129,7 @@ endif()
 include_directories(ext/native)
 
 if(RPI)
-	include_directories(/opt/vc/include /opt/vc/include/interface/vcos/pthreads /opt/vc/include/interface/vmcs_host/linux)
+	include_directories(/opt/vc/include /opt/vc/include/interface/vcos/pthreads)
 	link_directories(/opt/vc/lib)
 	set(OPENGL_LIBRARIES GLESv2 bcm_host)
 elseif(USING_GLES2 AND NOT IOS)
@@ -196,9 +190,6 @@ endif()
 if(MOBILE_DEVICE)
 	add_definitions(-DMOBILE_DEVICE)
 endif()
-if(ARMV7 AND RASPBIAN)
-	add_definitions(-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2)
-endif()
 
 if (NOT CMAKE_BUILD_TYPE)
 	message(STATUS "No build type selected, default to Release")
@@ -254,8 +245,8 @@ if(NOT MSVC)
 		# comment out the next line to enable default/"standard" architectures (which is a fat armv7/armv7s binary)
 		set(CMAKE_OSX_ARCHITECTURES "armv7")
 	elseif(APPLE)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mmacosx-version-min=10.7 -stdlib=libc++ -U__STRICT_ANSI__")
-		# Karen/angelXwind: -mmacosx-version-min=10.7 is needed in order to produce binaries that OS X 10.7 Lion can execute. However, it seems that PPSSPP won't support 10.6 or lower without getting rid of -stdlib=libc++ ...which probably won't end well. So I guess PPSSPP will strictly be a 10.7+ app.
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++ -U__STRICT_ANSI__")
+		# Karen/angelXwind: --macosx-version-min=10.7 is needed in order to produce binaries that OS X 10.7 Lion can execute. However, it seems that PPSSPP won't support 10.6 or lower without getting rid of -stdlib=libc++ ...which probably won't end well. So I guess PPSSPP will strictly be a 10.7+ app.
 		# vit9696: OSX 10.6 builds are possible: http://forums.ppsspp.org/showthread.php?tid=1826&pid=18875#pid18875
 		set(CMAKE_XCODE_ATTRIBUTE_CLANG_CXX_LIBRARY "libc++")
 	else()
@@ -307,11 +298,8 @@ set(CommonExtra)
 if(ARM)
 	set(CommonExtra ${CommonExtra}
 		Common/ArmCPUDetect.cpp
-		Common/ArmThunk.cpp)
-if(ARMV7)
-	set(CommonExtra ${CommonExtra}
+		Common/ArmThunk.cpp
 		Common/ColorConvNEON.cpp)
-endif()
 elseif(X86)
 	set(CommonExtra ${CommonExtra}
 		Common/ABI.cpp
@@ -758,10 +746,6 @@ set(nativeExtraLibs)
 if(ARMV7)
 	if(BB)
 		set (CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -march=armv7-a -mfpu=neon -mcpu=cortex-a8")
-	elseif(RPI)
-		set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mcpu=cortex-a7 -mfpu=neon -mfloat-abi=hard")
-		set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=cortex-a7 -mfpu=neon -mfloat-abi=hard")
-		set (CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -mcpu=cortex-a7 -mfpu=neon -mfloat-abi=hard")
 	else()
 		set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv7-a -mfpu=neon -mcpu=cortex-a9")
 		set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv7-a -mfpu=neon -mcpu=cortex-a9")
@@ -769,10 +753,6 @@ if(ARMV7)
 	endif()
 	set(nativeExtra ${nativeExtra}
 		ext/native/math/fast/fast_matrix_neon.S)
-elseif(RPI)
-	set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mfpu=vfp -march=armv6j -mfloat-abi=hard")
-	set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=vfp -march=armv6j -mfloat-abi=hard")
-	set (CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -mfpu=vfp -march=armv6j -mfloat-abi=hard")
 endif()
 if(X86 AND NOT MIPS)
 	set(nativeExtra ${nativeExtra}
@@ -783,13 +763,13 @@ endif()
 if(ANDROID)
 	set(nativeExtra ${nativeExtra}
 		ext/native/base/NativeApp.h
-		android/jni/app-android.cpp
-		android/jni/native_audio.cpp
-		android/jni/native_audio.h)
+		ext/native/android/app-android.cpp
+		ext/native/android/native_audio.cpp
+		ext/native/android/native_audio.h)
 
 	add_library(native_audio SHARED
-		android/jni/native-audio-so.cpp
-		android/jni/native-audio-so.h)
+		ext/native/android/native-audio-so.cpp
+		ext/native/android/native-audio-so.h)
 	target_link_libraries(native_audio OpenSLES log)
 	# No target
 elseif(IOS)
@@ -864,8 +844,6 @@ set(NativeAppSource
 	UI/NativeApp.cpp
 	UI/BackgroundAudio.cpp
 	UI/DevScreens.cpp
-	UI/DisplayLayoutEditor.cpp
-	UI/DisplayLayoutScreen.cpp
 	UI/EmuScreen.cpp
 	UI/GameInfoCache.cpp
 	UI/MainScreen.cpp
@@ -885,9 +863,7 @@ set(NativeAppSource
 	UI/Store.cpp
 	UI/CwCheatScreen.cpp
 	UI/InstallZipScreen.cpp
-	UI/ProfilerDraw.cpp
-	UI/ui_atlas.cpp
-	UI/ComboKeyMappingScreen.cpp)
+	UI/ui_atlas.cpp)
 if(ANDROID)
 	if (ARM)
 		set(NativeAppSource ${NativeAppSource} android/jni/ArmEmitterTest.cpp)
@@ -926,8 +902,6 @@ add_library(native STATIC
 	ext/native/file/fd_util.h
 	ext/native/file/file_util.cpp
 	ext/native/file/file_util.h
-	ext/native/file/free.cpp
-	ext/native/file/free.h
 	ext/native/file/ini_file.cpp
 	ext/native/file/ini_file.h
 	ext/native/file/path.cpp
@@ -1367,8 +1341,6 @@ add_library(${CoreLibName} ${CoreLinkType}
 	Core/HW/MemoryStick.h
 	Core/HW/SasAudio.cpp
 	Core/HW/SasAudio.h
-	Core/HW/SasReverb.cpp
-	Core/HW/SasReverb.h
 	Core/HW/StereoResampler.cpp
 	Core/HW/StereoResampler.h
 	Core/Host.cpp
@@ -1383,8 +1355,6 @@ add_library(${CoreLibName} ${CoreLinkType}
 	Core/FileLoaders/HTTPFileLoader.h
 	Core/FileLoaders/LocalFileLoader.cpp
 	Core/FileLoaders/LocalFileLoader.h
-	Core/FileLoaders/RamCachingFileLoader.cpp
-	Core/FileLoaders/RamCachingFileLoader.h
 	Core/FileLoaders/RetryingFileLoader.cpp
 	Core/FileLoaders/RetryingFileLoader.h
 	Core/MIPS/JitCommon/JitCommon.cpp
@@ -1471,12 +1441,9 @@ add_library(GPU OBJECT
 	GPU/Common/FramebufferCommon.h
 	GPU/Common/GPUDebugInterface.cpp
 	GPU/Common/GPUDebugInterface.h
-	GPU/Common/GPUStateUtils.cpp
 	GPU/Common/GPUStateUtils.h
 	GPU/Common/DrawEngineCommon.cpp
 	GPU/Common/DrawEngineCommon.h
-	GPU/Common/ShaderId.cpp
-	GPU/Common/ShaderId.h
 	GPU/Common/SplineCommon.cpp
 	GPU/Common/SplineCommon.h
 	GPU/Common/SoftwareTransformCommon.cpp
@@ -1735,7 +1702,6 @@ if(IOS)
 		XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "iPhone/iPad"
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
         XCODE_ATTRIBUTE_ENABLE_BITCODE NO
-        XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "-"
 	)
 endif()
 
