@@ -18,6 +18,14 @@ For the latest source code, see [our github page](https://github.com/hrydgard/pp
 
 For build instructions and other development tutorials, see the [wiki](https://github.com/hrydgard/ppsspp/wiki).
 
+What's new in 1.2.2
+-------------------
+* Went back to the old way of initializing graphics on Android. Should fix many recent issues.
+* Some graphical fixes, a vertex cache performance improvement and a screen clear optimization
+* Fix for dual source blending on most SHIELD devices, causing graphical issues.
+* Fix the homebrew store incorrectly unzipping some games. This will lead to more games being added.
+* Slightly faster ISO handling
+
 What's new in 1.2.1
 -------------------
 * Fixes for some crash-on-shutdown and app switching problems.
