@@ -107,6 +107,7 @@ public class NativeActivity extends Activity {
 	private Vibrator vibrator;
 
 	private boolean isXperiaPlay;
+	private boolean shuttingDown;
     
     // Allow for multiple connected gamepads but just consider them the same for now.
     // Actually this is not entirely true, see the code.
@@ -368,7 +369,8 @@ public class NativeActivity extends Activity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-		super.onCreate(savedInstanceState); 
+		super.onCreate(savedInstanceState);
+		shuttingDown = false;
     	installID = Installation.id(this);
 
 		if (!initialized) {
@@ -519,6 +521,9 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 		mGLSurfaceView = null;
 		audioFocusChangeListener = null;
 		audioManager = null;
+		if (shuttingDown) {
+            NativeApp.shutdown();
+		}
 	}  
 	
     private boolean detectOpenGLES20() {
@@ -1014,6 +1019,7 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 			}
 			return true;
 		} else if (command.equals("finish")) {
+			shuttingDown = true;
 			finish();
 		} else if (command.equals("rotate")) {
 			if (Build.VERSION.SDK_INT >= 9) {
