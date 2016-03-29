@@ -275,6 +275,7 @@ void GamePauseScreen::CreateViews() {
 
 	root_ = new LinearLayout(ORIENT_HORIZONTAL);
 
+	/*
 	ViewGroup *leftColumn = new ScrollView(ORIENT_VERTICAL, new LinearLayoutParams(1.0, scrollMargins));
 	root_->Add(leftColumn);
 
@@ -331,6 +332,7 @@ void GamePauseScreen::CreateViews() {
 	}
 	rightColumnItems->Add(new Spacer(25.0));
 	rightColumnItems->Add(new Choice(pa->T("Exit to menu")))->OnClick.Handle(this, &GamePauseScreen::OnExitToMenu);
+	*/
 }
 
 UI::EventReturn GamePauseScreen::OnGameSettings(UI::EventParams &e) {
