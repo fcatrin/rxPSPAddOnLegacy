@@ -467,7 +467,7 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 			
 			@Override
 			public void onAxisChange(GenericGamepad gamepad, float axisx, float axisy, float hatx, float haty) {
-				vinputDispatcher.sendAnalog(gamepad, Analog.LEFT, axisx, -axisy, hatx, haty);
+				vinputDispatcher.sendAnalog(gamepad, Analog.LEFT, axisx, axisy, hatx, haty);
 			}
 
 			@Override
