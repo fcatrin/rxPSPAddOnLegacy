@@ -257,6 +257,7 @@ public class NativeActivity extends Activity {
 		// don't use built in specific controller handling
 		String model = "RETRO BOX"; // Build.MANUFACTURER + ":" + Build.MODEL;
 		String languageRegion = Locale.getDefault().getLanguage() + "_" + Locale.getDefault().getCountry(); 
+		Log.d("LANG", languageRegion);
 
 		Point displaySize = new Point();
 		GetScreenSize(displaySize);
@@ -1240,21 +1241,24 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
     }
     
 	class VirtualInputDispatcher implements VirtualEventDispatcher {
+		float hatX[] = new float[Mapper.MAX_GAMEPADS];
+		float hatY[] = new float[Mapper.MAX_GAMEPADS];
 
 		@TargetApi(Build.VERSION_CODES.HONEYCOMB_MR1)
 		@Override
 		public void sendKey(GenericGamepad gamepad, int keyCode, boolean down) {
 			// emulate joystick events
 			
-			float axisX = 0;
-			float axisY = 0;
-			switch (keyCode) {
-			case KeyEvent.KEYCODE_DPAD_LEFT: axisX = down?-1:0; break;
-			case KeyEvent.KEYCODE_DPAD_RIGHT: axisX = down?1:0; break;
-			case KeyEvent.KEYCODE_DPAD_UP: axisY = down?-1:0; break;
-			case KeyEvent.KEYCODE_DPAD_DOWN: axisY = down?1:0; break;
+			float axisX = hatX[gamepad.player];
+			float axisY = hatY[gamepad.player];
+			if (down) {
+				switch (keyCode) {
+				case KeyEvent.KEYCODE_DPAD_LEFT: axisX = -1; break;
+				case KeyEvent.KEYCODE_DPAD_RIGHT: axisX = 1; break;
+				case KeyEvent.KEYCODE_DPAD_UP: axisY = -1; break;
+				case KeyEvent.KEYCODE_DPAD_DOWN: axisY = 1; break;
+				}
 			}
-			
 			int deviceId = NativeApp.DEVICE_ID_PAD_0;
 			NativeApp.beginJoystickEvent();
 			NativeApp.joystickAxis(deviceId, MotionEvent.AXIS_HAT_X, axisX);
@@ -1287,11 +1291,14 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 		@Override
 		public void sendAnalog(GenericGamepad gamepad, Analog index, double x,
 				double y, double hatx, double haty) {
-			Log.d("sendAnalog", "index " + index + " " + x + ", " + y + "   hatx:" + hatx + " haty:" + haty);
 			int deviceId = NativeApp.DEVICE_ID_PAD_0;
 			NativeApp.beginJoystickEvent();
+			NativeApp.joystickAxis(deviceId, MotionEvent.AXIS_X, (float)x);
+			NativeApp.joystickAxis(deviceId, MotionEvent.AXIS_Y, (float)y);
 			NativeApp.joystickAxis(deviceId, MotionEvent.AXIS_HAT_X, (float)hatx);
 			NativeApp.joystickAxis(deviceId, MotionEvent.AXIS_HAT_Y, (float)haty);
+			hatX[gamepad.player] = (float)hatx;
+			hatY[gamepad.player] = (float)haty;
 			NativeApp.endJoystickEvent();
 		}
 	}
