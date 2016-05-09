@@ -53,5 +53,6 @@ public class NativeApp {
 	public static native void loadState();
 	public static native void saveState();
 	public static native void setStateSlot(int slot);
+	public static native String getGameId();
 }
  

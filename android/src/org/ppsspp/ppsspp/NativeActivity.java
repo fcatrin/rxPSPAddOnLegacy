@@ -7,11 +7,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import retrobox.content.SaveStateInfo;
 import retrobox.utils.GamepadInfoDialog;
 import retrobox.utils.ImmersiveModeSetter;
 import retrobox.utils.ListOption;
 import retrobox.utils.RetroBoxDialog;
 import retrobox.utils.RetroBoxUtils;
+import retrobox.utils.SaveStateSelectorAdapter;
 import retrobox.v2.ppsspp.R;
 import retrobox.vinput.AnalogGamepad;
 import retrobox.vinput.AnalogGamepad.Axis;
@@ -119,11 +121,13 @@ public class NativeActivity extends Activity {
     private GamepadInfoDialog gamepadInfoDialog;
     AnalogGamepad analogGamepad;
     public static final Overlay overlay = new Overlay();
+
+	private static final String LOGTAG = NativeActivity.class.getSimpleName();
 	public static Mapper mapper;
 	private VirtualInputDispatcher vinputDispatcher;
     private GamepadView gamepadView;
     private GamepadController gamepadController;
-    private int saveSlot = 1;
+    private int saveSlot = 0;
     
     // Functions for the app activity to override to change behaviour.
     
@@ -247,7 +251,8 @@ public class NativeActivity extends Activity {
 		String libraryDir = getApplicationLibraryDir(appInfo);
 	    File sdcard = Environment.getExternalStorageDirectory();
 
-	    File externalStorageDir = new File(sdcard + "/PSPRBX");
+	    String rbxStorage = getIntent().getStringExtra("storageDir");
+	    File externalStorageDir = rbxStorage!=null ? new File(rbxStorage) : new File(sdcard + "/PSPRBX");
 	    externalStorageDir.mkdirs();
 	    copyRetroBoxIniFile(externalStorageDir);
 	    
@@ -1051,32 +1056,51 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
         }
     }
     
-    private void uiChangeSlot() {
-   		List<ListOption> options = new ArrayList<ListOption>();
-    	options.add(new ListOption("", "Cancel"));
-    	for(int i=1; i<=5; i++) {
-    		options.add(new ListOption(i+"", "Use save slot " + i, (i==saveSlot)?"Active":""));
-    	}
-    	
-    	RetroBoxDialog.showListDialog(this, "RetroBoxTV", options, new Callback<KeyValue>() {
+	private void uiSelectSaveState(final boolean isLoadingState) {
+		List<SaveStateInfo> list = new ArrayList<SaveStateInfo>();
+		String baseName = getIntent().getStringExtra("storageDir") + "/PSP/PPSSPP_STATE/" + NativeApp.getGameId();
+		for(int i=0; i<6; i++) {
+			String fileName = baseName + "_" + i + ".ppst" ;
+			String fileNameShot = baseName + "_" + i + ".jpg" ;
+			Log.d(LOGTAG, "Reading filestate from " + fileName);
+			list.add(new SaveStateInfo(new File(fileName), new File(fileNameShot)));
+		}
+		
+		final SaveStateSelectorAdapter adapter = new SaveStateSelectorAdapter(list, saveSlot);
+		
+		Callback<Integer> callback = new Callback<Integer>() {
+
 			@Override
-			public void onResult(KeyValue result) {
-				int slot = Utils.str2i(result.getKey());
-				if (slot>0 && slot!=saveSlot) {
-					saveSlot = slot;
-					NativeApp.setStateSlot(saveSlot - 1);
-					toastMessage("Save State slot changed to " + slot);
+			public void onResult(Integer index) {
+				System.out.println("setting save slot to " + index + " loading " + isLoadingState);
+				boolean invalidSlot = isLoadingState && 
+						!((SaveStateInfo)adapter.getItem(index)).exists();
+				
+				if (!invalidSlot) {
+					saveSlot = index;
+					NativeApp.setStateSlot(saveSlot);
+					if (isLoadingState) {
+						uiLoadState();
+					} else {
+						uiSaveState();
+					}
+					RetroBoxDialog.cancelDialog(NativeActivity.this);
 				}
-				openRetroBoxMenu(false);
 			}
 
 			@Override
-			public void onError() {
-				openRetroBoxMenu(false);
+			public void onFinally() {
+				onResumeFast();
 			}
 			
-    	});
-    }
+		};
+		
+		String title = "Select slot to " + (isLoadingState ? "load from" : "save on");
+		
+		RetroBoxDialog.showSaveStatesDialog(this, title, adapter, callback);
+	}
+    
+    
     
     private void openRetroBoxMenu() {
     	openRetroBoxMenu(true);
@@ -1089,7 +1113,6 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
     	options.add(new ListOption("", "Cancel"));
     	options.add(new ListOption("load", "Load State"));
     	options.add(new ListOption("save", "Save State"));
-    	options.add(new ListOption("slot", "Change Save State slot", "Slot " + saveSlot));
     	options.add(new ListOption("help", "Help"));
     	options.add(new ListOption("quit", "Quit"));
     	
@@ -1099,14 +1122,13 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 			public void onResult(KeyValue result) {
 				String key = result.getKey();
 				if (key.equals("load")) {
-					uiLoadState();
+					uiSelectSaveState(true);
+					return;
 				} else if (key.equals("save")) {
-					uiSaveState();
+					uiSelectSaveState(false);
+					return;
 				} else if (key.equals("quit")) {
 					uiQuit();
-				} else if (key.equals("slot")) {
-					uiChangeSlot();
-					return;
 				} else if (key.equals("help")) {
 					uiHelp();
 					return;

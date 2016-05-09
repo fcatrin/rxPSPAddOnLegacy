@@ -275,6 +275,13 @@ extern "C" void Java_org_ppsspp_ppsspp_NativeApp_setStateSlot(
 	save_slot = slot;
 }
 
+extern "C" jstring Java_org_ppsspp_ppsspp_NativeApp_getGameId(
+		JNIEnv *env, jclass) {
+	std::string gameId = SaveState::GetFullDiskId(game_name);
+	return env->NewStringUTF(gameId.c_str());
+}
+
+
 extern "C" void Java_org_ppsspp_ppsspp_NativeApp_audioInit(JNIEnv *, jclass) {
 	sampleRate = optimalSampleRate;
 	if (NativeQueryConfig("force44khz") != "0" || optimalSampleRate == 0) {

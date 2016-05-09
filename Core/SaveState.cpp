@@ -293,7 +293,7 @@ namespace SaveState
 	static const char *SCREENSHOT_EXTENSION = "jpg";
 	// Slot utilities
 
-	std::string GenerateSaveSlotFilename(const std::string &gameFilename, int slot, const char *extension)
+	std::string GetFullDiskId(const std::string &gameFilename)
 	{
 		std::string discId = g_paramSFO.GetValueString("DISC_ID");
 		std::string fullDiscId;
@@ -321,6 +321,14 @@ namespace SaveState
 				}
 			}
 		}
+
+		return fullDiscId;
+	}
+
+
+	std::string GenerateSaveSlotFilename(const std::string &gameFilename, int slot, const char *extension)
+	{
+		std::string fullDiscId = GetFullDiskId(gameFilename);
 
 		std::string temp = StringFromFormat("ms0:/PSP/PPSSPP_STATE/%s_%i.%s", fullDiscId.c_str(), slot, extension);
 		std::string hostPath;

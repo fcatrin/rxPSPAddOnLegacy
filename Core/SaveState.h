@@ -35,6 +35,9 @@ namespace SaveState
 	void NextSlot();
 	void SaveSlot(const std::string &gameFilename, int slot, Callback callback, void *cbUserData = 0);
 	void LoadSlot(const std::string &gameFilename, int slot, Callback callback, void *cbUserData = 0);
+
+	std::string GetFullDiskId(const std::string &gameFilename);
+
 	// Checks whether there's an existing save in the specified slot.
 	bool HasSaveInSlot(const std::string &gameFilename, int slot);
 	bool HasScreenshotInSlot(const std::string &gameFilename, int slot);
