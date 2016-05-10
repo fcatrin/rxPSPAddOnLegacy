@@ -1232,12 +1232,12 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
     
     private void uiLoadState() {
     	NativeApp.loadState();
-    	toastMessage("State was restored");
+    	toastMessage("State was restored from slot #" + saveSlot);
     }
 
     private void uiSaveState() {
     	NativeApp.saveState();
-    	toastMessage("State was saved");
+    	toastMessage("State was saved to slot #" + saveSlot);
     }
     
     protected void uiHelp() {
