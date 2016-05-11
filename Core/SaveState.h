@@ -77,4 +77,7 @@ namespace SaveState
 
 	// Check if there's any save stating needing to be done.  Normally called once per frame.
 	void Process();
+
+	// Enqueue save screenshot, used to make sure that is OK with the app life cycle
+	void SaveScreenshot(const std::string &filename, Callback callback, void *cbUserData);
 };

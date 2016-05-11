@@ -1303,6 +1303,7 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 			case EXIT: if (!down) uiQuitConfirm(); return true;
 			case LOAD_STATE: if (!down) uiLoadState(); return true;
 			case SAVE_STATE: if (!down) uiSaveState(); return true;
+			case SCREENSHOT: uiTakeScreenshot(); return true;
 			case MENU : if (!down) openRetroBoxMenu(); return true;
 			default:
 				return false;
@@ -1323,6 +1324,25 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 			hatY[gamepad.player] = (float)haty;
 			NativeApp.endJoystickEvent();
 		}
+	}
+
+	public void uiTakeScreenshot() {
+		String screenshotDir = getIntent().getStringExtra("shotsDir");
+		String screenshotName = getIntent().getStringExtra("shotsName");
+		for(int i=0; i<100; i++) {
+			File shot = new File(screenshotDir, screenshotName + ".shot." + i + ".png");
+			if (!shot.exists()) {
+				if (NativeApp.takeScreenshot(shot.getAbsolutePath())) {
+					Log.d(LOGTAG, "Screenshot taken on " + shot.getAbsolutePath());
+					toastMessage("Screenshot taken");
+				} else {
+					Log.d(LOGTAG, "Screenshot failed for " + shot.getAbsolutePath());
+					toastMessage("Screenshot failed");
+				}
+				return;
+			}
+		}
+		toastMessage("Unable to take screenshot (max of 100 files reached");
 	}
 
 }

@@ -325,7 +325,8 @@ void EmuScreen::onVKeyDown(int virtualKeyCode) {
 		break;
 
 	case VIRTKEY_PAUSE:
-		pauseTrigger_ = true;
+		// disable this, key is used for screenshots
+		// pauseTrigger_ = true;
 		break;
 
 	case VIRTKEY_AXIS_SWAP:

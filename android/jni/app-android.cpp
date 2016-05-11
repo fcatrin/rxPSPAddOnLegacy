@@ -281,6 +281,13 @@ extern "C" jstring Java_org_ppsspp_ppsspp_NativeApp_getGameId(
 	return env->NewStringUTF(gameId.c_str());
 }
 
+extern "C" jboolean Java_org_ppsspp_ppsspp_NativeApp_takeScreenshot(
+		JNIEnv *env, jclass, jstring jpath) {
+
+	std::string path = GetJavaString(env, jpath);
+	SaveState::SaveScreenshot(path, SaveState::Callback(), 0);
+	return true;
+}
 
 extern "C" void Java_org_ppsspp_ppsspp_NativeApp_audioInit(JNIEnv *, jclass) {
 	sampleRate = optimalSampleRate;

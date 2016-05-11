@@ -54,5 +54,6 @@ public class NativeApp {
 	public static native void saveState();
 	public static native void setStateSlot(int slot);
 	public static native String getGameId();
+	public static native boolean takeScreenshot(String path);
 }
  
