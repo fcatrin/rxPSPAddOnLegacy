@@ -3,8 +3,8 @@
     package="retrobox.v2.ppsspp"
     android:installLocation="auto"
     android:sharedUserId="psychoworld.retrobox.v2"
-    android:versionCode="111003"
-    android:versionName="1.1.1.0-3">
+    android:versionCode="111004"
+    android:versionName="1.1.1.0-4">
     <uses-sdk
         android:minSdkVersion="9"
         android:targetSdkVersion="22" />
