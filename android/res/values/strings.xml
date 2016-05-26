@@ -2,7 +2,7 @@
 <resources>
 
     <string name="hello">Hello World, PpssppActivity!</string>
-    <string name="app_name">RetroBoxTV PSP support</string>
+    <string name="app_name">RetroBoxTV PSP Add-on</string>
     <string name="shortcut_name">PPSSPP game</string>
 
 </resources>
