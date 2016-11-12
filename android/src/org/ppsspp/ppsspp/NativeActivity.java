@@ -29,6 +29,7 @@ import retrobox.vinput.VirtualEventDispatcher;
 import retrobox.vinput.overlay.GamepadController;
 import retrobox.vinput.overlay.GamepadView;
 import retrobox.vinput.overlay.Overlay;
+import retrobox.vinput.overlay.OverlayExtra;
 import xtvapps.core.AndroidFonts;
 import xtvapps.core.Callback;
 import xtvapps.core.SimpleCallback;
@@ -1066,7 +1067,7 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 			list.add(new SaveStateInfo(new File(fileName), new File(fileNameShot)));
 		}
 		
-		final SaveStateSelectorAdapter adapter = new SaveStateSelectorAdapter(list, saveSlot);
+		final SaveStateSelectorAdapter adapter = new SaveStateSelectorAdapter(this, list, saveSlot);
 		
 		Callback<Integer> callback = new Callback<Integer>() {
 
@@ -1095,7 +1096,9 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 			
 		};
 		
-		String title = "Select slot to " + (isLoadingState ? "load from" : "save on");
+		String title =  isLoadingState ?
+				getString(R.string.emu_slot_load_title) :
+				getString(R.string.emu_slot_save_title);
 		
 		RetroBoxDialog.showSaveStatesDialog(this, title, adapter, callback);
 	}
@@ -1110,14 +1113,13 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
     	if (pause) onPauseFast();
     	
     	List<ListOption> options = new ArrayList<ListOption>();
-    	options.add(new ListOption("", "Cancel"));
-    	options.add(new ListOption("load", "Load State"));
-    	options.add(new ListOption("save", "Save State"));
-    	options.add(new ListOption("help", "Help"));
-    	options.add(new ListOption("quit", "Quit"));
+    	options.add(new ListOption("", getString(R.string.emu_opt_cancel)));
+    	options.add(new ListOption("load", getString(R.string.emu_opt_state_load)));
+    	options.add(new ListOption("save", getString(R.string.emu_opt_state_save)));
+    	options.add(new ListOption("help", getString(R.string.emu_opt_help)));
+    	options.add(new ListOption("quit", getString(R.string.emu_opt_quit)));
     	
-    	
-    	RetroBoxDialog.showListDialog(this, "RetroBoxTV", options, new Callback<KeyValue>() {
+    	RetroBoxDialog.showListDialog(this, getString(R.string.emu_opt_title), options, new Callback<KeyValue>() {
 			@Override
 			public void onResult(KeyValue result) {
 				String key = result.getKey();
@@ -1232,12 +1234,15 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
     
     private void uiLoadState() {
     	NativeApp.loadState();
-    	toastMessage("State was restored from slot #" + saveSlot);
+		String msg = getString(R.string.emu_slot_loaded).replace("{n}", String.valueOf(saveSlot));
+		toastMessage(msg);
+
     }
 
     private void uiSaveState() {
     	NativeApp.saveState();
-    	toastMessage("State was saved to slot #" + saveSlot);
+		String msg = getString(R.string.emu_slot_saved).replace("{n}", String.valueOf(saveSlot));
+		toastMessage(msg);
     }
     
     protected void uiHelp() {
@@ -1326,23 +1331,24 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 		}
 	}
 
+	private static final int MAX_SCREENSHOTS = 100;
 	public void uiTakeScreenshot() {
 		String screenshotDir = getIntent().getStringExtra("shotsDir");
 		String screenshotName = getIntent().getStringExtra("shotsName");
-		for(int i=0; i<100; i++) {
+		for(int i=0; i<MAX_SCREENSHOTS; i++) {
 			File shot = new File(screenshotDir, screenshotName + ".shot." + i + ".png");
 			if (!shot.exists()) {
 				if (NativeApp.takeScreenshot(shot.getAbsolutePath())) {
 					Log.d(LOGTAG, "Screenshot taken on " + shot.getAbsolutePath());
-					toastMessage("Screenshot taken");
+					toastMessage(getString(R.string.emu_screenshot_taken));
 				} else {
 					Log.d(LOGTAG, "Screenshot failed for " + shot.getAbsolutePath());
-					toastMessage("Screenshot failed");
+					toastMessage(getString(R.string.emu_screenshot_failed));
 				}
 				return;
 			}
 		}
-		toastMessage("Unable to take screenshot (max of 100 files reached");
+		toastMessage(getString(R.string.emu_screenshot_failed_max).replace("{n}", String.valueOf(MAX_SCREENSHOTS)));
 	}
 
 }
