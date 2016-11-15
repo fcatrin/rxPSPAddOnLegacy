@@ -7,34 +7,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-import retrobox.content.SaveStateInfo;
-import retrobox.utils.GamepadInfoDialog;
-import retrobox.utils.ImmersiveModeSetter;
-import retrobox.utils.ListOption;
-import retrobox.utils.RetroBoxDialog;
-import retrobox.utils.RetroBoxUtils;
-import retrobox.utils.SaveStateSelectorAdapter;
-import retrobox.v2.ppsspp.R;
-import retrobox.vinput.AnalogGamepad;
-import retrobox.vinput.AnalogGamepad.Axis;
-import retrobox.vinput.AnalogGamepadListener;
-import retrobox.vinput.GenericGamepad;
-import retrobox.vinput.GenericGamepad.Analog;
-import retrobox.vinput.Mapper;
-import retrobox.vinput.Mapper.ShortCut;
-import retrobox.vinput.QuitHandler;
-import retrobox.vinput.QuitHandler.QuitHandlerCallback;
-import retrobox.vinput.VirtualEvent.MouseButton;
-import retrobox.vinput.VirtualEventDispatcher;
-import retrobox.vinput.overlay.GamepadController;
-import retrobox.vinput.overlay.GamepadView;
-import retrobox.vinput.overlay.Overlay;
-import retrobox.vinput.overlay.OverlayExtra;
-import xtvapps.core.AndroidFonts;
-import xtvapps.core.Callback;
-import xtvapps.core.SimpleCallback;
-import xtvapps.core.Utils;
-import xtvapps.core.content.KeyValue;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
@@ -63,10 +35,10 @@ import android.text.InputType;
 import android.util.Log;
 import android.view.Display;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.KeyEvent;
-import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnSystemUiVisibilityChangeListener;
@@ -79,6 +51,33 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.Toast;
+import retrobox.content.SaveStateInfo;
+import retrobox.utils.GamepadInfoDialog;
+import retrobox.utils.ImmersiveModeSetter;
+import retrobox.utils.ListOption;
+import retrobox.utils.RetroBoxDialog;
+import retrobox.utils.RetroBoxUtils;
+import retrobox.utils.SaveStateSelectorAdapter;
+import retrobox.v2.ppsspp.R;
+import retrobox.vinput.AnalogGamepad;
+import retrobox.vinput.AnalogGamepad.Axis;
+import retrobox.vinput.AnalogGamepadListener;
+import retrobox.vinput.GenericGamepad;
+import retrobox.vinput.GenericGamepad.Analog;
+import retrobox.vinput.Mapper;
+import retrobox.vinput.Mapper.ShortCut;
+import retrobox.vinput.QuitHandler;
+import retrobox.vinput.QuitHandler.QuitHandlerCallback;
+import retrobox.vinput.VirtualEvent.MouseButton;
+import retrobox.vinput.VirtualEventDispatcher;
+import retrobox.vinput.overlay.GamepadController;
+import retrobox.vinput.overlay.GamepadView;
+import retrobox.vinput.overlay.Overlay;
+import xtvapps.core.AndroidFonts;
+import xtvapps.core.Callback;
+import xtvapps.core.SimpleCallback;
+import xtvapps.core.Utils;
+import xtvapps.core.content.KeyValue;
 
 public class NativeActivity extends Activity {
 	// Remember to loadLibrary your JNI .so in a static {} block
@@ -454,6 +453,8 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 
         mapper = new Mapper(getIntent(), vinputDispatcher);
         Mapper.initGestureDetector(this);
+        Mapper.joinPorts = getIntent().getBooleanExtra("joinPorts", false);
+        
         gamepadView = new GamepadView(this, overlay);
         
         for(int i=0; i<4; i++) {
