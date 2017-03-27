@@ -1,7 +1,11 @@
 package org.ppsspp.ppsspp;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
@@ -299,9 +303,29 @@ public class NativeActivity extends Activity {
 		try {
 			File iniFile = new File(externalStorageDir, "/PSP/SYSTEM/ppsspp.ini");
 			iniFile.getParentFile().mkdirs();
-			Utils.copyFile(new File(getIntent().getStringExtra("iniFile")), iniFile);
+			copyFile(new File(getIntent().getStringExtra("iniFile")), iniFile);
 		} catch (IOException e) {
 			e.printStackTrace();
+		}
+	}
+	
+	public static void copyFile(File src, File dst) throws IOException {
+		FileInputStream is = new FileInputStream(src);
+		FileOutputStream os = new FileOutputStream(dst);
+		copyFile(is, os);
+	}
+	
+	public static void copyFile(InputStream is, OutputStream os) throws IOException {
+        byte buffer[] = new byte[65536];
+		int bufferLength = 0;
+
+		try {
+			while ((bufferLength = is.read(buffer)) > 0) {
+				os.write(buffer, 0, bufferLength);
+			}
+		} finally {
+			is.close();
+			os.close();
 		}
 	}
 
