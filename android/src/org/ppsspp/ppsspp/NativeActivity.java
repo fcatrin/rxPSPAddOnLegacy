@@ -512,6 +512,9 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 				mapper.handleTriggerEvent(deviceDescriptor, deviceId, left, right); 
 			}
 
+			@Override
+			public void onTriggersAnalog(GenericGamepad gamepad, int deviceId, float left, float right) {}
+
 		});
 
     }
