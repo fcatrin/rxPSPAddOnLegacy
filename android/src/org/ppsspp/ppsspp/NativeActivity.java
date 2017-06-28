@@ -385,7 +385,7 @@ public class NativeActivity extends Activity {
 	@TargetApi(11)
 	public void checkForVibrator() {
         if (Build.VERSION.SDK_INT >= 11) {
-	        if (!vibrator.hasVibrator()) {
+	        if (vibrator==null || !vibrator.hasVibrator()) {
 	        	vibrator = null;
 	        }
         }
