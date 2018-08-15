@@ -2,7 +2,7 @@
 <resources>
 
     <string name="hello">Hello World, PpssppActivity!</string>
-    <string name="app_name">RetroX PSP Add-on</string>
+    <string name="app_name">PRG PSP Add-on</string>
     <string name="shortcut_name">PPSSPP game</string>
-
+    <string name="emu_opt_title">PRG Options</string>
 </resources>

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="retrobox.v2.ppsspp"
+    package="xtvapps.prg.ppsspp"
     android:installLocation="auto"
-    android:sharedUserId="psychoworld.retrobox.v2"
+    android:sharedUserId="xtvapps.prg.user"
     android:versionCode="111014"
     android:versionName="1.1.1.0-14">
     <uses-sdk
@@ -29,7 +29,7 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/retrobox"
+        android:icon="@drawable/ic_prg"
         android:label="@string/app_name" 
         android:logo="@drawable/ic_banner"
         android:isGame="true"
@@ -43,7 +43,7 @@
 
             <!-- android:screenOrientation="landscape" -->
             <intent-filter>
-                <action android:name="retrobox.v2.ppsspp.main" />
+                <action android:name="xtvapps.prg.ppsspp.main" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain"/>
             </intent-filter>  

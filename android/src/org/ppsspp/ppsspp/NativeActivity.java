@@ -62,7 +62,7 @@ import retrobox.utils.ListOption;
 import retrobox.utils.RetroBoxDialog;
 import retrobox.utils.RetroBoxUtils;
 import retrobox.utils.SaveStateSelectorAdapter;
-import retrobox.v2.ppsspp.R;
+import xtvapps.prg.ppsspp.R;
 import retrobox.vinput.AnalogGamepad;
 import retrobox.vinput.AnalogGamepad.Axis;
 import retrobox.vinput.AnalogGamepadListener;
