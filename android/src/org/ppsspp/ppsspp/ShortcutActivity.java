@@ -1,7 +1,7 @@
 package org.ppsspp.ppsspp;
 
 import java.io.File;
-import xtvapps.prg.ppsspp.R;
+import xtvapps.res.ppsspp.R;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.Intent.ShortcutIconResource;
