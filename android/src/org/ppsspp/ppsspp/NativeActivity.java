@@ -684,7 +684,7 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
     		}
     		return super.dispatchKeyEvent(event);
     	}
-    	if (mapper.handleKeyEvent(event, keyCode, keyDown)) return true;
+    	if (mapper.handleKeyEvent(this, event, keyCode, keyDown)) return true;
     	
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR1 && !isXperiaPlay) {
 			InputDeviceState state = getInputDeviceState(event);
