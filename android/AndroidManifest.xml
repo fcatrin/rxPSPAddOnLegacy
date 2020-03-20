@@ -3,8 +3,8 @@
     package="xtvapps.prg.ppsspp"
     android:installLocation="auto"
     android:sharedUserId="xtvapps.prg.user"
-    android:versionCode="111014"
-    android:versionName="1.1.1.0-14">
+    android:versionCode="111015"
+    android:versionName="1.1.1.0-15">
     <uses-sdk
         android:minSdkVersion="9"
         android:targetSdkVersion="22" />

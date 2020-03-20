@@ -66,17 +66,17 @@ import xtvapps.prg.ppsspp.R;
 import retrobox.vinput.AnalogGamepad;
 import retrobox.vinput.AnalogGamepad.Axis;
 import retrobox.vinput.AnalogGamepadListener;
-import retrobox.vinput.GenericGamepad;
-import retrobox.vinput.GenericGamepad.Analog;
+import retrobox.vinput.GamepadDevice;
+import retrobox.vinput.GamepadMapping.Analog;
 import retrobox.vinput.Mapper;
 import retrobox.vinput.Mapper.ShortCut;
 import retrobox.vinput.QuitHandler;
 import retrobox.vinput.QuitHandler.QuitHandlerCallback;
 import retrobox.vinput.VirtualEvent.MouseButton;
 import retrobox.vinput.VirtualEventDispatcher;
-import retrobox.vinput.overlay.GamepadController;
-import retrobox.vinput.overlay.GamepadView;
 import retrobox.vinput.overlay.Overlay;
+import retrobox.vinput.overlay.OverlayGamepadController;
+import retrobox.vinput.overlay.OverlayGamepadView;
 import xtvapps.core.AndroidFonts;
 import xtvapps.core.Callback;
 import xtvapps.core.SimpleCallback;
@@ -129,8 +129,8 @@ public class NativeActivity extends Activity {
 	private static final String LOGTAG = NativeActivity.class.getSimpleName();
 	public static Mapper mapper;
 	private VirtualInputDispatcher vinputDispatcher;
-    private GamepadView gamepadView;
-    private GamepadController gamepadController;
+    private OverlayGamepadView gamepadView;
+    private OverlayGamepadController gamepadController;
     private int saveSlot = 0;
     
     // Functions for the app activity to override to change behaviour.
@@ -472,20 +472,13 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
         gamepadInfoDialog = new GamepadInfoDialog(this);
         gamepadInfoDialog.loadFromIntent(getIntent());
 
-    	gamepadController = new GamepadController();
+    	gamepadController = new OverlayGamepadController();
     	vinputDispatcher = new VirtualInputDispatcher();
 
         mapper = new Mapper(getIntent(), vinputDispatcher);
         Mapper.initGestureDetector(this);
-        Mapper.joinPorts = getIntent().getBooleanExtra("joinPorts", false);
         
-        gamepadView = new GamepadView(this, overlay);
-        
-        for(int i=0; i<4; i++) {
-        	String prefix = "j" + (i+1);
-        	String deviceDescriptor = getIntent().getStringExtra(prefix + "DESCRIPTOR");
-    		Mapper.registerGamepad(i, deviceDescriptor);
-        }
+        gamepadView = new OverlayGamepadView(this, overlay);
         
     	setupGamepadOverlay(root);
     	analogGamepad = new AnalogGamepad(0, 0, new AnalogGamepadListener() {
@@ -497,23 +490,23 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 			public void onMouseMove(int mousex, int mousey) {}
 			
 			@Override
-			public void onAxisChange(GenericGamepad gamepad, float axisx, float axisy, float hatx, float haty, float raxisx, float raxisy) {
+			public void onAxisChange(GamepadDevice gamepad, float axisx, float axisy, float hatx, float haty, float raxisx, float raxisy) {
 				vinputDispatcher.sendAnalog(gamepad, Analog.LEFT, axisx, axisy, hatx, haty);
 			}
 
 			@Override
-			public void onDigitalX(GenericGamepad gamepad, Axis axis, boolean on) {}
+			public void onDigitalX(GamepadDevice gamepad, Axis axis, boolean on) {}
 
 			@Override
-			public void onDigitalY(GenericGamepad gamepad, Axis axis, boolean on) {}
+			public void onDigitalY(GamepadDevice gamepad, Axis axis, boolean on) {}
 			
 			@Override
-			public void onTriggers(String deviceDescriptor, int deviceId, boolean left, boolean right) {
-				mapper.handleTriggerEvent(deviceDescriptor, deviceId, left, right); 
+			public void onTriggers(String deviceName, int deviceId, boolean left, boolean right) {
+				mapper.handleTriggerEventByDeviceName(deviceName, deviceId, left, right); 
 			}
 
 			@Override
-			public void onTriggersAnalog(GenericGamepad gamepad, int deviceId, float left, float right) {}
+			public void onTriggersAnalog(GamepadDevice gamepad, int deviceId, float left, float right) {}
 
 		});
 
@@ -524,7 +517,7 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 	}
     
 	private boolean isStableLayout() {
-		return Mapper.hasGamepads();
+		return !Mapper.mustDisplayOverlayControllers();
 	}
 
     @TargetApi(19)
@@ -691,7 +684,7 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
     		}
     		return super.dispatchKeyEvent(event);
     	}
-    	if (mapper.handleKeyEvent(event, keyCode, keyDown)) return true;
+    	if (mapper.handleKeyEvent(this, event, keyCode, keyDown)) return true;
     	
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR1 && !isXperiaPlay) {
 			InputDeviceState state = getInputDeviceState(event);
@@ -1246,7 +1239,7 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 	}
 	
 	private boolean needsOverlay() {
-		return !Mapper.hasGamepads();
+		return Mapper.mustDisplayOverlayControllers();
 	}
 
     @Override
@@ -1274,7 +1267,7 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
     }
     
     protected void uiHelp() {
-		RetroBoxDialog.showGamepadDialogIngame(this, gamepadInfoDialog, new SimpleCallback() {
+		RetroBoxDialog.showGamepadDialogIngame(this, gamepadInfoDialog, Mapper.hasGamepads(), new SimpleCallback() {
 			@Override
 			public void onResult() {
 				onResumeFast();
@@ -1296,12 +1289,12 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
     }
     
 	class VirtualInputDispatcher implements VirtualEventDispatcher {
-		float hatX[] = new float[Mapper.MAX_GAMEPADS];
-		float hatY[] = new float[Mapper.MAX_GAMEPADS];
+		float hatX[] = new float[Mapper.MAX_PLAYERS];
+		float hatY[] = new float[Mapper.MAX_PLAYERS];
 
 		@TargetApi(Build.VERSION_CODES.HONEYCOMB_MR1)
 		@Override
-		public void sendKey(GenericGamepad gamepad, int keyCode, boolean down) {
+		public void sendKey(GamepadDevice gamepad, int keyCode, boolean down) {
 			// emulate joystick events
 			
 			float axisX = hatX[gamepad.player];
@@ -1325,10 +1318,7 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 		}
 
 		@Override
-		public void sendMouseButton(MouseButton button, boolean down) {
-			// TODO Auto-generated method stub
-			
-		}
+		public void sendMouseButton(MouseButton button, boolean down) {}
 
 		@Override
 		public boolean handleShortcut(ShortCut shortcut, boolean down) {
@@ -1345,7 +1335,7 @@ AndroidFonts.setViewFont(findViewById(R.id.txtDialogListTitle), RetroBoxUtils.FO
 
 		@TargetApi(Build.VERSION_CODES.HONEYCOMB_MR1)
 		@Override
-		public void sendAnalog(GenericGamepad gamepad, Analog index, double x,
+		public void sendAnalog(GamepadDevice gamepad, Analog index, double x,
 				double y, double hatx, double haty) {
 			int deviceId = NativeApp.DEVICE_ID_PAD_0;
 			NativeApp.beginJoystickEvent();
